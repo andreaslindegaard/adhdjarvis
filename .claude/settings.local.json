@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx firebase-tools:*)",
+      "Bash(node -c app.js)",
+      "Bash(node -c firebase-sync.js)",
+      "Bash(node -c sw.js)"
+    ]
+  }
+}
