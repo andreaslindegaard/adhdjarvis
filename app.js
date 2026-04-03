@@ -139,6 +139,13 @@
     return day === 0 || day === 6;
   }
 
+  function getISOWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+
   // ---- Danish holidays (helligdage) ----
   function computeEaster(year) {
     const a = year % 19;
@@ -327,6 +334,7 @@
     let html = '';
     let currentMonth = -1;
     let currentYear = -1;
+    let lastWeekNum = -1;
     const d = new Date(start);
 
     while (d <= end) {
@@ -367,6 +375,12 @@
             ${totalNotes > 0 ? `<span><strong>${Math.round(doneNotes/totalNotes*100)}%</strong> complete</span>` : ''}
           </div>
         </div>`;
+      }
+
+      const wn = getISOWeekNumber(d);
+      if (wn !== lastWeekNum) {
+        lastWeekNum = wn;
+        html += `<div class="week-marker"><span class="week-marker-label">Uge ${wn}</span><span class="week-marker-line"></span></div>`;
       }
 
       const todayClass = isToday(key) ? 'is-today' : '';
@@ -2035,6 +2049,172 @@
         window.scrollTo(0, savedCalendarScrollY);
         savedCalendarScrollY = null;
       }, 10);
+    }
+  });
+
+  // ---- Month grid calendar picker ----
+  const calPickerOverlay = document.getElementById('calPickerOverlay');
+  const calPickerGrid = document.getElementById('calPickerGrid');
+  const calPickerLabel = document.getElementById('calPickerLabel');
+  const calPickerWeekdays = document.getElementById('calPickerWeekdays');
+  let calPickerDate = new Date();
+
+  const SHORT_WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  function renderCalPickerWeekdays() {
+    calPickerWeekdays.innerHTML = '<span style="font-size:0.6rem">Uge</span>' +
+      SHORT_WEEKDAYS.map(d => `<span>${d}</span>`).join('');
+  }
+  renderCalPickerWeekdays();
+
+  function renderCalPicker() {
+    const year = calPickerDate.getFullYear();
+    const month = calPickerDate.getMonth();
+    calPickerLabel.textContent = `${MONTHS[month]} ${year}`;
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    let startDow = firstDay.getDay();
+    if (startDow === 0) startDow = 7;
+
+    const todayStr = dateKey(new Date());
+    const allCells = [];
+
+    for (let i = startDow - 1; i > 0; i--) {
+      const d = new Date(year, month, 1 - i);
+      allCells.push({ d, otherMonth: true });
+    }
+
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      allCells.push({ d: new Date(year, month, day), otherMonth: false });
+    }
+
+    const totalCells = allCells.length;
+    const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    for (let i = 1; i <= remaining; i++) {
+      allCells.push({ d: new Date(year, month + 1, i), otherMonth: true });
+    }
+
+    let html = '';
+    for (let i = 0; i < allCells.length; i++) {
+      if (i % 7 === 0) {
+        const wn = getISOWeekNumber(allCells[i].d);
+        html += `<div class="cal-week-num">${wn}</div>`;
+      }
+
+      const { d, otherMonth } = allCells[i];
+      const key = dateKey(d);
+      const dow = d.getDay();
+      const isTodayCls = key === todayStr ? ' is-today' : '';
+      const isWeekendCls = (dow === 0 || dow === 6) ? ' is-weekend' : '';
+      const hasN = hasNotesForDate(key);
+      const hasNotesCls = hasN ? ' has-notes' : '';
+      const holiday = getHolidayName(key);
+      const holidayCls = holiday ? ' is-holiday' : '';
+      const titleAttr = holiday ? ` title="${holiday}"` : '';
+      const otherCls = otherMonth ? ' other-month' : '';
+
+      html += `<div class="cal-day-cell${otherCls}${isTodayCls}${isWeekendCls}${hasNotesCls}${holidayCls}"${titleAttr} data-date="${key}">
+        <span class="cal-day-num">${d.getDate()}</span>
+      </div>`;
+    }
+
+    calPickerGrid.innerHTML = html;
+  }
+
+  function hasNotesForDate(key) {
+    if (notes[key] && notes[key].length > 0) return true;
+    const recs = getRecurringForDate(key);
+    return recs.length > 0;
+  }
+
+  function openCalPicker() {
+    calPickerDate = new Date();
+    renderCalPicker();
+    calPickerOverlay.classList.add('active');
+  }
+
+  function closeCalPicker() {
+    calPickerOverlay.classList.remove('active');
+  }
+
+  function jumpToDate(key) {
+    closeCalPicker();
+
+    searchBox.value = '';
+    searchTerm = '';
+
+    if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
+      layoutState.activeTab = 'calendar';
+      saveLayout();
+      applyLayout();
+    }
+
+    render();
+
+    setTimeout(() => {
+      const el = document.getElementById('day-' + key);
+      if (el) {
+        updateStickyOffsets();
+        const topbar = document.querySelector('.topbar');
+        const topbarH = topbar ? topbar.offsetHeight : 0;
+        let stickyH = topbarH;
+
+        if (layoutState.mode === 'tabs') {
+          const viewTabsEl = document.getElementById('viewTabs');
+          stickyH += viewTabsEl ? viewTabsEl.offsetHeight : 0;
+        } else {
+          const nbSection = document.getElementById('notebookSection');
+          stickyH += nbSection ? nbSection.offsetHeight : 0;
+        }
+
+        let prev = el.previousElementSibling;
+        while (prev && !prev.classList.contains('month-header')) {
+          prev = prev.previousElementSibling;
+        }
+        const monthHeaderH = prev && prev.classList.contains('month-header') ? prev.offsetHeight : 0;
+
+        const pad = stickyH + monthHeaderH + 10;
+        const y = el.getBoundingClientRect().top + window.scrollY - pad;
+        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+
+        el.style.transition = 'background 0.3s ease';
+        el.style.background = 'var(--accent-soft)';
+        setTimeout(() => { el.style.background = ''; }, 1500);
+      }
+    }, 80);
+  }
+
+  document.getElementById('calPickerBtn').addEventListener('click', openCalPicker);
+
+  calPickerOverlay.addEventListener('click', (e) => {
+    if (e.target === calPickerOverlay) closeCalPicker();
+  });
+
+  document.getElementById('calPickerPrev').addEventListener('click', () => {
+    calPickerDate.setMonth(calPickerDate.getMonth() - 1);
+    renderCalPicker();
+  });
+
+  document.getElementById('calPickerNext').addEventListener('click', () => {
+    calPickerDate.setMonth(calPickerDate.getMonth() + 1);
+    renderCalPicker();
+  });
+
+  document.getElementById('calPickerTodayBtn').addEventListener('click', () => {
+    jumpToDate(dateKey(new Date()));
+  });
+
+  calPickerGrid.addEventListener('click', (e) => {
+    const cell = e.target.closest('.cal-day-cell');
+    if (!cell) return;
+    jumpToDate(cell.dataset.date);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && calPickerOverlay.classList.contains('active')) {
+      closeCalPicker();
     }
   });
 

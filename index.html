@@ -617,6 +617,30 @@
       background: var(--accent-soft) !important;
     }
 
+    /* Week number marker in timeline */
+    .week-marker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 6px 0 2px 14px;
+      padding-left: 22px;
+    }
+
+    .week-marker-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      white-space: nowrap;
+    }
+
+    .week-marker-line {
+      flex: 1;
+      height: 1.5px;
+      background: var(--border);
+    }
+
     /* Weekend styling */
     .day-block.is-weekend {
       opacity: 0.7;
@@ -1226,6 +1250,209 @@
       border-radius: var(--radius);
     }
 
+    /* ---- Month grid calendar picker ---- */
+    .cal-picker-btn {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 34px !important;
+      padding: 6px !important;
+    }
+
+    .cal-picker-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(45, 43, 40, 0.3);
+      backdrop-filter: blur(3px);
+      z-index: 180;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 60px;
+    }
+
+    .cal-picker-overlay.active { display: flex; }
+
+    .cal-picker {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 24px 18px;
+      box-shadow: var(--shadow-lg);
+      width: 370px;
+      max-width: 95vw;
+      animation: calPickerIn 0.15s ease-out;
+    }
+
+    @keyframes calPickerIn {
+      from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .cal-picker-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .cal-picker-nav button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .cal-picker-nav button:hover {
+      background: var(--surface-hover);
+      border-color: var(--text-dim);
+      color: var(--text);
+    }
+
+    .cal-picker-month-label {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+      cursor: pointer;
+      padding: 4px 12px;
+      border-radius: var(--radius-sm);
+      transition: background 0.1s;
+    }
+
+    .cal-picker-month-label:hover {
+      background: var(--surface-hover);
+    }
+
+    .cal-picker-weekdays {
+      display: grid;
+      grid-template-columns: 28px repeat(7, 1fr);
+      gap: 2px;
+      margin-bottom: 4px;
+    }
+
+    .cal-picker-weekdays span {
+      text-align: center;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 0;
+    }
+
+    .cal-picker-grid {
+      display: grid;
+      grid-template-columns: 28px repeat(7, 1fr);
+      gap: 2px;
+    }
+
+    .cal-week-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      opacity: 0.6;
+      padding: 4px 0;
+      user-select: none;
+    }
+
+    .cal-day-cell {
+      position: relative;
+      text-align: center;
+      padding: 7px 4px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
+      transition: all 0.1s ease;
+      min-height: 38px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .cal-day-cell:hover {
+      background: var(--surface-hover);
+      box-shadow: 0 0 0 1px var(--border);
+    }
+
+    .cal-day-cell.other-month {
+      color: var(--text-dim);
+      opacity: 0.4;
+    }
+
+    .cal-day-cell.is-today {
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+      border-radius: var(--radius-sm);
+    }
+
+    .cal-day-cell.is-today:hover {
+      background: var(--accent-hover);
+      box-shadow: none;
+    }
+
+    .cal-day-cell.is-weekend:not(.is-today) {
+      color: var(--text-dim);
+    }
+
+    .cal-day-cell.has-notes::after {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: block;
+    }
+
+    .cal-day-cell.is-today.has-notes::after {
+      background: white;
+    }
+
+    .cal-day-cell.is-holiday .cal-day-num {
+      color: var(--accent);
+    }
+
+    .cal-day-cell.is-today.is-holiday .cal-day-num {
+      color: white;
+    }
+
+    .cal-picker-today-btn {
+      display: block;
+      margin: 12px auto 0;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 6px 20px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+
+    .cal-picker-today-btn:hover {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
   </style>
 </head>
 <body>
@@ -1235,6 +1462,9 @@
     <div class="topbar-actions">
       <input type="text" class="search-box" placeholder="Search notes..." id="searchBox">
       <button class="today-btn" id="todayBtn">Today</button>
+      <button id="calPickerBtn" class="cal-picker-btn" title="Month view">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5.5" y1="2.5" x2="5.5" y2="0.5"/><line x1="10.5" y1="2.5" x2="10.5" y2="0.5"/><rect x="4" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="10" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="4" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/></svg>
+      </button>
       <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
       <div class="more-menu-wrap">
         <button id="moreMenuBtn" class="more-menu-btn" title="Mere">&#x22ef;</button>
@@ -1361,6 +1591,19 @@
         <button class="btn-secondary" id="notifModalClose">Close</button>
         <button class="btn-primary" id="notifModalSave">Save</button>
       </div>
+    </div>
+  </div>
+
+  <div class="cal-picker-overlay" id="calPickerOverlay">
+    <div class="cal-picker">
+      <div class="cal-picker-nav">
+        <button id="calPickerPrev" title="Previous month">&#x2039;</button>
+        <span class="cal-picker-month-label" id="calPickerLabel"></span>
+        <button id="calPickerNext" title="Next month">&#x203a;</button>
+      </div>
+      <div class="cal-picker-weekdays" id="calPickerWeekdays"></div>
+      <div class="cal-picker-grid" id="calPickerGrid"></div>
+      <button class="cal-picker-today-btn" id="calPickerTodayBtn">Go to today</button>
     </div>
   </div>
 
