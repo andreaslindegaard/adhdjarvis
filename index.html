@@ -757,15 +757,303 @@
       font-weight: 600;
     }
 
-    /* Responsive */
+    /* ---- Mobile-only elements (hidden on desktop) ---- */
+    .mobile-search-toggle {
+      display: none;
+    }
+
+    .mobile-only-menu-item {
+      display: none !important;
+    }
+
+    .mobile-search-row {
+      display: none;
+      background: rgba(245, 240, 232, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border-light);
+      position: sticky;
+      top: 0;
+      z-index: 99;
+    }
+
+    .mobile-search-row.active { display: flex; gap: 8px; align-items: center; }
+
+    .mobile-search-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-family: inherit;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .mobile-search-input::placeholder { color: var(--text-dim); }
+    .mobile-search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    .mobile-search-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 1.4rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+
+    .mobile-search-close:hover { color: var(--accent); }
+
+    /* ---- Responsive: Mobile ---- */
     @media (max-width: 600px) {
-      .topbar { padding: 10px 16px; }
-      .document { padding: 20px 14px 200px; }
-      .search-box { width: 130px; }
-      .month-header h2 { font-size: 1.2rem; }
-      .note-actions { opacity: 0.5; }
-      .note-edit, .note-delete { padding: 4px 8px; font-size: 1rem; }
+      /* --- Topbar --- */
+      .topbar {
+        padding: 10px 16px;
+        gap: 8px;
+      }
+      .topbar h1 { font-size: 1rem; }
+      .topbar-actions { gap: 6px; }
+
+      .search-box { display: none; }
+      .cal-picker-btn { display: none !important; }
+      .view-toggle-btn { display: none !important; }
+
+      .mobile-search-toggle {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: var(--surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        width: 34px;
+        height: 34px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.15s ease;
+        padding: 0;
+      }
+      .mobile-search-toggle:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .mobile-only-menu-item {
+        display: block !important;
+      }
+
+      .today-btn {
+        padding: 6px 12px !important;
+        font-size: 0.78rem !important;
+      }
+
+      .more-menu-btn {
+        width: 34px;
+        height: 34px;
+      }
+
+      /* --- Document --- */
+      .document { padding: 20px 10px 200px; }
+
+      /* --- Month header --- */
+      .month-header { margin-top: 32px; }
+      .month-header h2 { font-size: 1.15rem; }
+
+      /* --- Day block --- */
+      .day-block {
+        margin-left: 10px;
+        padding: 12px 0 12px 16px;
+      }
+
+      /* --- Note actions: touch-friendly --- */
+      .note-actions {
+        flex-direction: row;
+        opacity: 0.6;
+        padding-top: 0;
+        gap: 6px;
+        align-self: center;
+      }
+      .note-edit, .note-delete {
+        min-width: 36px;
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
+        padding: 0;
+        border-radius: var(--radius-sm);
+        background: var(--surface-hover);
+      }
       .link-delete { opacity: 0.5; padding: 2px 6px; }
+
+      /* --- Note item --- */
+      .note-item {
+        padding: 10px 12px;
+        gap: 8px;
+      }
+      .note-text { font-size: 0.85rem; }
+
+      /* --- Add note form: stacked --- */
+      .add-note-area { margin-right: 0; }
+
+      .add-note-form .form-row {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .add-note-form .form-row textarea {
+        width: 100%;
+        flex: 1 1 100%;
+        min-height: 44px;
+      }
+      .reminder-menu-btn,
+      .recurring-menu-btn,
+      .task-toggle-btn {
+        min-height: 40px !important;
+        padding: 8px 12px !important;
+        font-size: 0.82rem !important;
+      }
+      .add-note-form .save-note-btn {
+        min-height: 40px;
+        padding: 8px 16px;
+        flex: 1;
+      }
+
+      .reminder-options,
+      .recurring-options {
+        gap: 6px;
+      }
+      .reminder-option,
+      .recurring-option {
+        padding: 8px 14px !important;
+        font-size: 0.8rem !important;
+      }
+
+      /* --- Quick actions: bigger tap targets --- */
+      .quick-action {
+        padding: 8px 14px;
+        font-size: 0.8rem;
+      }
+      .add-note-btn {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+      }
+
+      /* --- Calendar picker: fullscreen --- */
+      .cal-picker-overlay {
+        padding-top: 0;
+        align-items: stretch;
+      }
+      .cal-picker {
+        width: 100%;
+        max-width: 100vw;
+        height: 100%;
+        border-radius: 0;
+        padding: 20px 16px;
+        display: flex;
+        flex-direction: column;
+      }
+      .cal-picker-nav {
+        margin-bottom: 16px;
+      }
+      .cal-picker-nav button {
+        width: 44px;
+        height: 44px;
+        font-size: 1.3rem;
+      }
+      .cal-picker-month-label {
+        font-size: 1.15rem;
+      }
+      .cal-picker-grid {
+        flex: 1;
+        align-content: start;
+      }
+      .cal-day-cell {
+        min-height: 48px;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+      .cal-picker-today-btn {
+        margin-top: 16px;
+        padding: 12px 24px;
+        font-size: 0.88rem;
+      }
+
+      /* --- Modals: fullscreen --- */
+      .modal-overlay {
+        align-items: stretch;
+        justify-content: stretch;
+      }
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        border-radius: 0;
+        padding: 24px 16px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .modal textarea {
+        flex: 1;
+        min-height: 200px;
+      }
+      .modal-actions {
+        padding-top: 12px;
+      }
+      .modal-actions button {
+        min-height: 44px;
+        padding: 10px 20px;
+      }
+
+      /* --- View tabs on mobile --- */
+      .view-tab {
+        padding: 12px 20px;
+        font-size: 0.88rem;
+        flex: 1;
+        text-align: center;
+      }
+
+      /* --- Notebook: force tabs on mobile --- */
+      .notebook-section {
+        padding: 12px 10px 8px;
+        position: static;
+        box-shadow: none;
+        border-bottom: none;
+      }
+      .notebook-inner {
+        max-width: 100%;
+      }
+      .notebook-editor {
+        min-height: 50vh;
+        padding: 12px 14px;
+      }
+      .notebook-tabs {
+        gap: 2px;
+      }
+      .notebook-tab {
+        padding: 8px 12px;
+        font-size: 0.76rem;
+      }
+      .notebook-resize-handle {
+        display: none;
+      }
+
+      /* --- Edit note inline --- */
+      .edit-reminder-row {
+        gap: 6px;
+      }
+      .note-edit-input {
+        min-height: 44px;
+      }
+
+      /* --- Week marker --- */
+      .week-marker {
+        margin: 4px 0 2px 10px;
+        padding-left: 16px;
+      }
     }
 
     /* Export modal */
@@ -1592,9 +1880,14 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5.5" y1="2.5" x2="5.5" y2="0.5"/><line x1="10.5" y1="2.5" x2="10.5" y2="0.5"/><rect x="4" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="10" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="4" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/></svg>
       </button>
       <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
+      <button id="mobileSearchToggle" class="mobile-search-toggle" title="Search">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10" y1="10" x2="14" y2="14"/></svg>
+      </button>
       <div class="more-menu-wrap">
         <button id="moreMenuBtn" class="more-menu-btn" title="Mere">&#x22ef;</button>
         <div class="more-menu hidden" id="moreMenu">
+          <button id="mobileCalPickerBtn" class="mobile-only-menu-item">Month calendar</button>
+          <button id="mobileViewToggleBtn" class="mobile-only-menu-item">Switch view</button>
           <button id="exportBtn">Export</button>
           <button id="importBtn">Import</button>
           <button id="smartLinksBtn">Smart Links</button>
@@ -1603,6 +1896,11 @@
       </div>
     </div>
     <span id="syncStatus" style="font-size:0.7rem; color:var(--text-dim);"></span>
+  </div>
+
+  <div class="mobile-search-row" id="mobileSearchRow">
+    <input type="text" class="mobile-search-input" placeholder="Search notes..." id="mobileSearchInput">
+    <button class="mobile-search-close" id="mobileSearchClose">&times;</button>
   </div>
 
   <div class="view-tabs" id="viewTabs">

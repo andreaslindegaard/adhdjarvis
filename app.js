@@ -1261,10 +1261,18 @@
     }
   }
 
+  function clearMobileSearch() {
+    const msRow = document.getElementById('mobileSearchRow');
+    const msInput = document.getElementById('mobileSearchInput');
+    if (msRow) msRow.classList.remove('active');
+    if (msInput) msInput.value = '';
+  }
+
   // ---- Today button ----
   document.getElementById('todayBtn').addEventListener('click', () => {
     searchBox.value = '';
     searchTerm = '';
+    clearMobileSearch();
     if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
       layoutState.activeTab = 'calendar';
       saveLayout();
@@ -1290,6 +1298,21 @@
     // Close menu when any menu button is clicked
     moreMenu.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', () => moreMenu.classList.add('hidden'));
+    });
+  }
+
+  // ---- Mobile more-menu items (calendar + view toggle) ----
+  const mobileCalBtn = document.getElementById('mobileCalPickerBtn');
+  if (mobileCalBtn) {
+    mobileCalBtn.addEventListener('click', () => openCalPicker());
+  }
+
+  const mobileViewBtn = document.getElementById('mobileViewToggleBtn');
+  if (mobileViewBtn) {
+    mobileViewBtn.addEventListener('click', () => {
+      layoutState.mode = layoutState.mode === 'split' ? 'tabs' : 'split';
+      saveLayout();
+      applyLayout();
     });
   }
 
@@ -2334,6 +2357,7 @@
 
     searchBox.value = '';
     searchTerm = '';
+    clearMobileSearch();
 
     if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
       layoutState.activeTab = 'calendar';
@@ -2403,10 +2427,79 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && calPickerOverlay.classList.contains('active')) {
-      closeCalPicker();
+    if (e.key === 'Escape') {
+      if (calPickerOverlay.classList.contains('active')) {
+        closeCalPicker();
+      }
+      const msRow = document.getElementById('mobileSearchRow');
+      if (msRow && msRow.classList.contains('active')) {
+        msRow.classList.remove('active');
+      }
     }
   });
+
+  // ---- Mobile: force tabs layout on small screens ----
+  function isMobileViewport() {
+    return window.innerWidth <= 600;
+  }
+
+  if (isMobileViewport() && layoutState.mode !== 'tabs') {
+    layoutState.mode = 'tabs';
+    if (!layoutState.activeTab) layoutState.activeTab = 'calendar';
+    saveLayout();
+  }
+
+  window.addEventListener('resize', (() => {
+    let resizeTimer;
+    return () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (isMobileViewport() && layoutState.mode !== 'tabs') {
+          layoutState.mode = 'tabs';
+          saveLayout();
+          applyLayout();
+        }
+      }, 200);
+    };
+  })());
+
+  // ---- Mobile search toggle ----
+  const mobileSearchRow = document.getElementById('mobileSearchRow');
+  const mobileSearchInput = document.getElementById('mobileSearchInput');
+  const mobileSearchToggle = document.getElementById('mobileSearchToggle');
+  const mobileSearchClose = document.getElementById('mobileSearchClose');
+
+  if (mobileSearchToggle) {
+    mobileSearchToggle.addEventListener('click', () => {
+      mobileSearchRow.classList.add('active');
+      mobileSearchInput.value = searchBox.value;
+      setTimeout(() => mobileSearchInput.focus(), 50);
+    });
+  }
+
+  if (mobileSearchClose) {
+    mobileSearchClose.addEventListener('click', () => {
+      mobileSearchRow.classList.remove('active');
+      mobileSearchInput.value = '';
+      searchBox.value = '';
+      searchTerm = '';
+      render();
+      searchNotebook('');
+    });
+  }
+
+  if (mobileSearchInput) {
+    let mobileSearchTimeout;
+    mobileSearchInput.addEventListener('input', () => {
+      clearTimeout(mobileSearchTimeout);
+      mobileSearchTimeout = setTimeout(() => {
+        searchBox.value = mobileSearchInput.value;
+        searchTerm = mobileSearchInput.value.trim();
+        render();
+        searchNotebook(searchTerm);
+      }, 200);
+    });
+  }
 
   // ---- Initial render ----
   render();
