@@ -38,6 +38,9 @@
       --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
       --radius: 12px;
       --radius-sm: 8px;
+      /* Notebook: soft surfaces (not stark white) */
+      --notebook-paper: #f0e9e2;
+      --notebook-sidebar: #e9e2da;
     }
 
     body {
@@ -48,6 +51,8 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
+
+    /* App layout */
 
     /* Top bar */
     .topbar {
@@ -840,6 +845,7 @@
 
     /* ---- Responsive: Mobile ---- */
     @media (max-width: 600px) {
+      /* --- Layout: stack on mobile --- */
       /* --- Topbar --- */
       .topbar {
         padding: 10px 16px;
@@ -1069,17 +1075,23 @@
 
       /* --- Notebook: force tabs on mobile --- */
       .notebook-section {
-        padding: 12px 10px 8px;
+        padding: 0;
         position: static;
         box-shadow: none;
         border-bottom: none;
       }
       .notebook-inner {
         max-width: 100%;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
       }
       .notebook-editor {
         min-height: 50vh;
         padding: 12px 14px;
+      }
+      .notebook-tabs-row {
+        padding: 0 10px;
       }
       .notebook-tabs {
         gap: 2px;
@@ -1278,26 +1290,25 @@
 
     /* ---- Notebook / Scratchpad ---- */
     .notebook-section {
-      position: sticky;
-      top: 0;
       z-index: 90;
       background: var(--bg);
       max-width: 100%;
       padding: 16px 24px 12px;
-      border-bottom: 1px solid var(--border-light);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
 
     .notebook-inner {
-      max-width: 720px;
+      max-width: 100%;
       margin: 0 auto;
+      display: flex;
+      background: var(--notebook-paper);
+      border-radius: var(--radius);
+      border: 1px solid var(--border-light);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
     }
 
     .notebook-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
+      display: none;
     }
 
     .notebook-header h2 {
@@ -1321,67 +1332,106 @@
 
     .notebook-header h2 .chevron.open { transform: rotate(90deg); }
 
-    .notebook-add-btn {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      padding: 4px 12px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 0.78rem;
-      font-family: inherit;
-      font-weight: 500;
-      transition: all 0.15s ease;
+    /*
+     * New tab: same tab shape / type as page tabs (inactive chrome).
+     * Unlike .active: no paper fill, no terracotta — reads as “another tab”, not the open page.
+     */
+    .notebook-tab.notebook-tab-new {
       flex-shrink: 0;
+      margin-left: 2px;
     }
 
-    .notebook-add-btn:hover {
-      border-color: var(--accent);
-      color: var(--accent);
+    .notebook-tab.notebook-tab-new:hover {
+      /* same as .notebook-tab:hover — explicit so it wins over any stray rules */
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    .notebook-tab-new-inner {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .notebook-tab-new-label {
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+
+    .notebook-tab-new-plus {
+      font-size: 0.82rem;
+      font-weight: 600;
+      line-height: 1;
+      opacity: 0.65;
+    }
+
+    .notebook-tab.notebook-tab-new:hover .notebook-tab-new-plus {
+      opacity: 0.9;
     }
 
     .notebook-tabs-row {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: flex-end;
+      gap: 4px;
+      padding: 8px 12px 0;
+      border-bottom: 1px solid var(--border-light);
+      background: var(--notebook-sidebar);
     }
 
     .notebook-tabs {
       display: flex;
       gap: 4px;
+      flex: 1;
+      min-width: 0;
       overflow-x: auto;
-      padding-bottom: 2px;
+      overflow-y: hidden;
+      padding-bottom: 0;
       margin-bottom: 0;
+      align-items: flex-end;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
     }
 
-    .notebook-tabs::-webkit-scrollbar { height: 3px; }
-    .notebook-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .notebook-tabs::-webkit-scrollbar {
+      height: 5px;
+    }
+    .notebook-tabs::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
 
     .notebook-tab {
-      background: var(--bg-warm);
-      border: 1px solid var(--border-light);
+      background: transparent;
+      border: 1px solid transparent;
       border-bottom: none;
       color: var(--text-dim);
-      padding: 6px 14px;
-      border-radius: 8px 8px 0 0;
+      padding: 8px 14px 10px;
+      border-radius: 10px 10px 0 0;
       cursor: pointer;
-      font-size: 0.78rem;
+      font-size: 0.82rem;
       font-family: inherit;
       font-weight: 500;
       white-space: nowrap;
-      transition: all 0.15s ease;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
       display: flex;
       align-items: center;
       gap: 6px;
+      position: relative;
+      margin-bottom: -1px;
     }
 
-    .notebook-tab:hover { color: var(--text); background: var(--surface-hover); }
+    .notebook-tab:hover {
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.35);
+    }
 
     .notebook-tab.active {
-      background: var(--surface);
-      color: var(--text);
+      color: var(--accent);
       font-weight: 600;
-      border-color: var(--border);
+      background: var(--notebook-paper);
+      border-color: var(--border-light);
+      border-bottom: 1px solid var(--notebook-paper);
+      z-index: 1;
     }
 
     .notebook-tab .tab-close {
@@ -1396,6 +1446,7 @@
       transition: all 0.15s;
     }
 
+    .notebook-tab.active .tab-close { opacity: 0.55; }
     .notebook-tab:hover .tab-close { opacity: 0.5; }
     .notebook-tab .tab-close:hover { color: var(--accent); opacity: 1; }
 
@@ -1515,44 +1566,52 @@
     }
 
     .notebook-tab.tab-match {
-      background: var(--accent-bg);
       color: var(--accent);
-      border-color: var(--accent);
     }
 
     .notebook-tab.tab-match.active {
-      background: var(--surface);
-      border-bottom-color: var(--surface);
-      box-shadow: inset 0 2px 0 var(--accent);
+      color: var(--accent);
     }
 
     .notebook-body {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 0 var(--radius) var(--radius) var(--radius);
-      box-shadow: var(--shadow-sm);
+      background: var(--notebook-paper);
+      border: none;
+      border-radius: 0;
       overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .notebook-edit-stack {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--notebook-paper);
     }
 
     .notebook-title-input {
       width: 100%;
       border: none;
-      border-bottom: 1px solid var(--border-light);
-      padding: 12px 18px;
-      font-size: 0.95rem;
-      font-weight: 600;
+      padding: 16px 24px 8px;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.4px;
       font-family: inherit;
       color: var(--text);
       background: transparent;
+      line-height: 1.25;
     }
 
-    .notebook-title-input::placeholder { color: var(--text-dim); }
-    .notebook-title-input:focus { outline: none; background: var(--surface-hover); }
+    .notebook-title-input::placeholder { color: var(--text-dim); opacity: 0.85; }
+    .notebook-title-input:focus { outline: none; }
 
     .notebook-editor {
       width: 100%;
       border: none;
-      padding: 12px 18px;
+      padding: 4px 24px 16px;
       font-size: 0.85rem;
       font-family: inherit;
       color: var(--text);
@@ -1586,25 +1645,28 @@
 
     .notebook-toolbar {
       display: flex;
+      align-items: center;
       gap: 2px;
-      padding: 4px 14px;
+      padding: 6px 16px;
       border-bottom: 1px solid var(--border-light);
-      background: var(--surface);
+      /* Same as active tab + editor page — reads as one “folder leaf” */
+      background: var(--notebook-paper);
+      flex-shrink: 0;
     }
     .notebook-toolbar button {
       background: none;
       border: 1px solid transparent;
       color: var(--text-secondary);
       cursor: pointer;
-      padding: 3px 8px;
+      padding: 4px 8px;
       border-radius: 4px;
-      font-size: 0.78rem;
+      font-size: 0.82rem;
       font-family: inherit;
       line-height: 1;
       transition: all 0.12s ease;
     }
     .notebook-toolbar button:hover {
-      background: var(--surface-hover);
+      background: rgba(255, 255, 255, 0.35);
       color: var(--text);
       border-color: var(--border);
     }
@@ -1613,14 +1675,38 @@
       color: var(--accent);
       border-color: var(--accent);
     }
+    .notebook-toolbar button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .notebook-toolbar button:disabled:hover {
+      background: none;
+      border-color: transparent;
+      color: var(--text-secondary);
+    }
+
+    .toolbar-separator {
+      width: 1px;
+      height: 16px;
+      background: var(--border-light);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
 
     .notebook-meta {
-      padding: 6px 18px 8px;
+      padding: 6px 24px 8px;
       border-top: 1px solid var(--border-light);
       font-size: 0.68rem;
       color: var(--text-dim);
       display: flex;
       justify-content: space-between;
+    }
+
+    #notebookContent {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     .notebook-collapsed { display: none; }
@@ -1714,7 +1800,7 @@
     }
 
     body.layout-tabs .notebook-body {
-      border-radius: var(--radius);
+      border-radius: 0;
     }
 
     /* ---- Month grid calendar picker ---- */
@@ -1921,6 +2007,7 @@
     }
 
     /* ---- Notebook sidebar ---- */
+    /* ---- Sidebar overlay (mobile only) ---- */
     .nb-sidebar-overlay {
       position: fixed;
       inset: 0;
@@ -1936,36 +2023,27 @@
       pointer-events: auto;
     }
 
+    /* ---- Sidebar: persistent left panel ---- */
     .nb-sidebar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: 260px;
-      background: var(--surface);
+      width: 200px;
+      background: var(--notebook-sidebar);
       border-right: 1px solid var(--border);
-      z-index: 910;
       display: flex;
       flex-direction: column;
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      box-shadow: var(--shadow-lg);
-    }
-    .nb-sidebar.open {
-      transform: translateX(0);
+      flex-shrink: 0;
     }
 
     .nb-sidebar-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 16px 8px;
-      border-bottom: 1px solid var(--border-light);
+      padding: 28px 20px 12px;
     }
     .nb-sidebar-title {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 700;
       color: var(--text);
+      letter-spacing: -0.2px;
     }
     .nb-sidebar-close {
       background: none;
@@ -1976,20 +2054,25 @@
       padding: 0 4px;
       line-height: 1;
       transition: color 0.15s;
+      display: none;
     }
     .nb-sidebar-close:hover {
       color: var(--text);
     }
 
+    .nb-sidebar-footer {
+      padding: 8px 12px 16px;
+      border-top: 1px solid var(--border-light);
+    }
     .nb-sidebar-new {
-      margin: 10px 12px 6px;
+      width: 100%;
       background: none;
       border: 1px dashed var(--border);
       color: var(--text-secondary);
-      padding: 8px 12px;
+      padding: 7px 12px;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       font-family: inherit;
       font-weight: 500;
       text-align: left;
@@ -2003,27 +2086,28 @@
     .nb-sidebar-list {
       flex: 1;
       overflow-y: auto;
-      padding: 6px 8px 16px;
+      padding: 4px 0 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 0;
     }
 
     .nb-sidebar-item {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 9px 10px;
-      border-radius: var(--radius-sm);
+      gap: 0;
+      padding: 8px 10px 8px 20px;
       cursor: pointer;
       transition: background 0.12s;
       position: relative;
+      border-left: 3px solid transparent;
     }
     .nb-sidebar-item:hover {
-      background: var(--surface-hover);
+      background: rgba(255, 255, 255, 0.35);
     }
     .nb-sidebar-item.active {
-      background: var(--accent-soft);
+      border-left-color: var(--accent);
+      background: none;
     }
     .nb-sidebar-item.archived {
       opacity: 0.55;
@@ -2038,18 +2122,43 @@
       display: flex;
       flex-direction: column;
       gap: 1px;
+      margin-right: 8px;
+    }
+
+    .nb-sidebar-item-trailing {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-shrink: 0;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .nb-sidebar-item-pin-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      flex-shrink: 0;
+      pointer-events: none;
+    }
+    .nb-sidebar-item-pin-indicator svg {
+      display: block;
     }
     .nb-sidebar-item-title {
       font-size: 0.82rem;
       font-weight: 500;
-      color: var(--text);
+      color: var(--text-secondary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .nb-sidebar-item.active .nb-sidebar-item-title {
+      color: var(--accent);
+      font-weight: 600;
+    }
     .nb-sidebar-item-date {
-      font-size: 0.68rem;
-      color: var(--text-dim);
+      display: none;
     }
 
     .nb-sidebar-item-delete {
@@ -2058,7 +2167,7 @@
       color: var(--text-dim);
       font-size: 1rem;
       cursor: pointer;
-      padding: 2px 4px;
+      padding: 2px 2px 2px 4px;
       line-height: 1;
       opacity: 0;
       transition: opacity 0.12s, color 0.12s;
@@ -2071,6 +2180,56 @@
       color: var(--accent);
     }
 
+    .nb-context-menu {
+      position: fixed;
+      z-index: 1200;
+      min-width: 140px;
+      padding: 4px 0;
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md);
+    }
+    .nb-context-menu.hidden {
+      display: none !important;
+    }
+    .nb-context-menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px 14px;
+      border: none;
+      background: none;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--text);
+    }
+    .nb-context-menu-item:hover {
+      background: var(--surface-hover);
+    }
+    .nb-context-menu-item--danger {
+      color: #a53c32;
+    }
+    .nb-context-menu-item--danger:hover {
+      background: rgba(165, 60, 50, 0.08);
+    }
+
+    .nb-sidebar-item[draggable="true"] {
+      cursor: grab;
+    }
+    .nb-sidebar-item[draggable="true"]:active {
+      cursor: grabbing;
+    }
+    .nb-sidebar-item-dragging {
+      opacity: 0.55;
+    }
+    .nb-sidebar-item.nb-sidebar-drop-target {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      border-radius: var(--radius-sm);
+    }
+
     .nb-sidebar-toggle {
       background: none;
       border: 1px solid var(--border);
@@ -2079,7 +2238,7 @@
       height: 32px;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       transition: all 0.15s ease;
@@ -2092,11 +2251,29 @@
 
     @media (max-width: 600px) {
       .nb-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
         width: 80%;
         max-width: 320px;
+        z-index: 910;
+        background: var(--notebook-sidebar);
+        box-shadow: var(--shadow-lg);
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+      }
+      .nb-sidebar.open {
+        transform: translateX(0);
+      }
+      .nb-sidebar-close {
+        display: block;
       }
       .nb-sidebar-overlay {
         display: block;
+      }
+      .nb-sidebar-toggle {
+        display: flex;
       }
       .nb-sidebar-item-delete {
         opacity: 0.6;
@@ -2108,15 +2285,10 @@
 <body>
 
   <div class="nb-sidebar-overlay" id="nbSidebarOverlay"></div>
-  <div class="nb-sidebar" id="nbSidebar">
-    <div class="nb-sidebar-header">
-      <span class="nb-sidebar-title">Notebook</span>
-      <button class="nb-sidebar-close" id="nbSidebarClose" title="Close sidebar">&times;</button>
-    </div>
-    <button class="nb-sidebar-new" id="nbSidebarNew">+ New page</button>
-    <div class="nb-sidebar-list" id="nbSidebarList"></div>
+  <div id="nbSidebarContextMenu" class="nb-context-menu hidden" role="menu" aria-hidden="true">
+    <button type="button" class="nb-context-menu-item" id="nbSidebarCtxPin" role="menuitem">Pin</button>
+    <button type="button" class="nb-context-menu-item nb-context-menu-item--danger" id="nbSidebarCtxDelete" role="menuitem">Delete</button>
   </div>
-
   <div class="topbar">
     <h1><span>ADHD</span> Jarvis</h1>
     <div class="topbar-actions">
@@ -2156,22 +2328,42 @@
       <div class="notebook-header">
         <h2 id="notebookToggle"><span class="chevron open">&#9654;</span> Notebook</h2>
       </div>
+      <div class="nb-sidebar" id="nbSidebar">
+        <div class="nb-sidebar-header">
+          <span class="nb-sidebar-title">Notes</span>
+          <button class="nb-sidebar-close" id="nbSidebarClose" title="Close sidebar">&times;</button>
+        </div>
+        <div class="nb-sidebar-list" id="nbSidebarList"></div>
+        <div class="nb-sidebar-footer">
+          <button class="nb-sidebar-new" id="nbSidebarNew">+ New page</button>
+        </div>
+      </div>
       <div id="notebookContent">
         <div class="notebook-tabs-row">
           <button class="nb-sidebar-toggle" id="nbSidebarToggle" title="Notebook pages">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="4" x2="16" y2="4"/><line x1="2" y1="9" x2="16" y2="9"/><line x1="2" y1="14" x2="16" y2="14"/></svg>
           </button>
-          <div class="notebook-tabs" id="notebookTabs"></div>
-          <button class="notebook-add-btn" id="notebookAddBtn">+ New page</button>
+          <div class="notebook-tabs" id="notebookTabs">
+            <button type="button" class="notebook-tab notebook-tab-new" id="notebookAddBtn" title="Create new page">
+              <span class="notebook-tab-new-inner">
+                <span class="notebook-tab-new-label">New Tab</span>
+                <span class="notebook-tab-new-plus" aria-hidden="true">+</span>
+              </span>
+            </button>
+          </div>
         </div>
         <div class="notebook-body" id="notebookBody">
-          <input type="text" class="notebook-title-input" id="notebookTitle" placeholder="Page title...">
           <div class="notebook-toolbar" id="notebookToolbar">
             <button data-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button data-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>
+            <span class="toolbar-separator"></span>
             <button data-cmd="insertUnorderedList" title="Bullet list (Ctrl+Shift+8)"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="2" cy="3" r="1.3"/><rect x="5.5" y="2" width="9.5" height="2" rx="0.5"/><circle cx="2" cy="8" r="1.3"/><rect x="5.5" y="7" width="9.5" height="2" rx="0.5"/><circle cx="2" cy="13" r="1.3"/><rect x="5.5" y="12" width="9.5" height="2" rx="0.5"/></svg></button>
             <button data-cmd="insertOrderedList" title="Numbered list (Ctrl+Shift+7)"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><text x="0.5" y="4.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">1</text><rect x="5.5" y="2" width="9.5" height="2" rx="0.5"/><text x="0.5" y="9.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">2</text><rect x="5.5" y="7" width="9.5" height="2" rx="0.5"/><text x="0.5" y="14.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">3</text><rect x="5.5" y="12" width="9.5" height="2" rx="0.5"/></svg></button>
           </div>
-          <div class="notebook-editor" id="notebookEditor" contenteditable="true" data-placeholder="Write anything here... thoughts, reminders, things you want to remember."></div>
+          <div class="notebook-edit-stack">
+            <input type="text" class="notebook-title-input" id="notebookTitle" placeholder="Title" autocomplete="off">
+            <div class="notebook-editor" id="notebookEditor" contenteditable="true" data-placeholder="Write anything here... thoughts, reminders, things you want to remember."></div>
+          </div>
           <div class="notebook-meta">
             <span id="notebookCharCount">0 characters</span>
             <span id="notebookLastSaved">Not saved yet</span>
@@ -2279,7 +2471,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=1"></script>
-<script src="app.js?v=32"></script>
+<script src="app.js?v=37"></script>
 
 </body>
 </html>

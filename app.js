@@ -1197,7 +1197,7 @@
   });
 
   function searchNotebook(term) {
-    notebookTabs.querySelectorAll('.notebook-tab').forEach(t => t.classList.remove('tab-match'));
+    notebookTabs.querySelectorAll('.notebook-tab[data-page-id]').forEach(t => t.classList.remove('tab-match'));
 
     if (!term) {
       notebookEditor.classList.remove('has-search-match');
@@ -1226,6 +1226,7 @@
 
       if (!currentMatches) {
         notebook.activePageId = firstMatchId;
+        markPageActivated(firstMatchId);
         saveNotebook();
         renderNotebook();
       }
@@ -1580,6 +1581,80 @@
     if (changed) saveNotebook();
   })();
 
+  (function migrateNotebookPins() {
+    const pinned = notebook.pages.filter(p => p.pinned);
+    if (!pinned.length) return;
+    if (pinned.some(p => p.pinnedRank == null)) {
+      pinned.sort((a, b) => (a.updated || 0) - (b.updated || 0));
+      pinned.forEach((p, i) => {
+        p.pinnedRank = i;
+      });
+      saveNotebook();
+    }
+  })();
+
+  function sortPagesForSidebar(pages) {
+    const pinned = pages.filter(p => p.pinned).sort((a, b) => (a.pinnedRank || 0) - (b.pinnedRank || 0));
+    const unpinned = pages
+      .filter(p => !p.pinned)
+      .sort((a, b) => (b.lastActiveAt || b.updated || 0) - (a.lastActiveAt || a.updated || 0));
+    return [...pinned, ...unpinned];
+  }
+
+  function compactPinnedRanks() {
+    const pinned = notebook.pages.filter(p => p.pinned).sort((a, b) => (a.pinnedRank || 0) - (b.pinnedRank || 0));
+    pinned.forEach((p, i) => {
+      p.pinnedRank = i;
+    });
+  }
+
+  function toggleSidebarPin(pageId) {
+    const p = notebook.pages.find(x => x.id === pageId);
+    if (!p) return;
+    if (p.pinned) {
+      p.pinned = false;
+      delete p.pinnedRank;
+      compactPinnedRanks();
+    } else {
+      const ranks = notebook.pages.filter(x => x.pinned).map(x => x.pinnedRank ?? 0);
+      const maxR = ranks.length ? Math.max(...ranks) : -1;
+      p.pinned = true;
+      p.pinnedRank = maxR + 1;
+    }
+    saveNotebook();
+    renderSidebar();
+  }
+
+  function reorderPinnedPages(draggedId, targetId, insertBefore) {
+    let ids = notebook.pages
+      .filter(p => p.pinned)
+      .sort((a, b) => (a.pinnedRank || 0) - (b.pinnedRank || 0))
+      .map(p => p.id);
+    const from = ids.indexOf(draggedId);
+    const hasTarget = ids.includes(targetId);
+    if (from === -1 || !hasTarget || draggedId === targetId) return;
+    ids.splice(from, 1);
+    let insertAt = ids.indexOf(targetId);
+    if (insertBefore) {
+      ids.splice(insertAt, 0, draggedId);
+    } else {
+      ids.splice(insertAt + 1, 0, draggedId);
+    }
+    ids.forEach((id, i) => {
+      const pg = notebook.pages.find(x => x.id === id);
+      if (pg) pg.pinnedRank = i;
+    });
+    saveNotebook();
+    renderSidebar();
+  }
+
+  const NB_PIN_SVG =
+    '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.431.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/></svg>';
+
+  let nbSidebarDragOverEl = null;
+  let nbSidebarDragSourceId = null;
+  let nbContextPageId = null;
+
   function getActivePages() {
     return notebook.pages.filter(p => !p.archived);
   }
@@ -1591,6 +1666,13 @@
   function getActivePage() {
     const active = getActivePages();
     return active.find(p => p.id === notebook.activePageId) || active[0];
+  }
+
+  /** Sidebar order: most recently selected tab first (falls back to `updated`). */
+  function markPageActivated(id) {
+    if (!id) return;
+    const p = notebook.pages.find(x => x.id === id);
+    if (p) p.lastActiveAt = Date.now();
   }
 
   function renderNotebook({ forceEditorUpdate = false } = {}) {
@@ -1605,8 +1687,9 @@
       </button>`;
     }
     notebookTabs.innerHTML = tabsHtml;
+    if (notebookAddBtn) notebookTabs.appendChild(notebookAddBtn);
 
-    if (nbSidebar.classList.contains('open')) renderSidebar();
+    renderSidebar();
 
     const page = getActivePage();
     const editorFocused = document.activeElement === notebookEditor;
@@ -1680,6 +1763,7 @@
     if (notebook.activePageId === id) {
       const active = getActivePages();
       notebook.activePageId = active[0]?.id;
+      markPageActivated(notebook.activePageId);
     }
     saveNotebook();
     renderNotebook({ forceEditorUpdate: true });
@@ -1690,6 +1774,7 @@
     if (!page) return;
     page.archived = false;
     notebook.activePageId = id;
+    markPageActivated(id);
     saveNotebook();
     renderNotebook({ forceEditorUpdate: true });
   }
@@ -1699,6 +1784,7 @@
     const title = page ? (page.title || 'Untitled') : 'this page';
     if (!confirm(`Permanently delete "${title}"? This cannot be undone.`)) return;
     notebook.pages = notebook.pages.filter(p => p.id !== id);
+    compactPinnedRanks();
     saveNotebook();
     renderNotebook({ forceEditorUpdate: true });
   }
@@ -1729,7 +1815,8 @@
   nbSidebarOverlay.addEventListener('click', closeSidebar);
 
   nbSidebarNew.addEventListener('click', () => {
-    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: Date.now(), archived: false };
+    const now = Date.now();
+    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: now, lastActiveAt: now, archived: false };
     notebook.pages.push(newPage);
     notebook.activePageId = newPage.id;
     saveNotebook();
@@ -1739,23 +1826,99 @@
   });
 
   function renderSidebar() {
-    const sorted = [...notebook.pages].sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    nbSidebarList.innerHTML = sorted.map(p => {
-      const title = escapeHtml(p.title || 'Untitled');
-      const date = p.updated ? new Date(p.updated).toLocaleDateString() : '';
-      const isActive = p.id === notebook.activePageId && !p.archived;
-      const cls = ['nb-sidebar-item'];
-      if (isActive) cls.push('active');
-      if (p.archived) cls.push('archived');
-      return `<div class="${cls.join(' ')}" data-page-id="${p.id}">
+    const sorted = sortPagesForSidebar([...notebook.pages]);
+    nbSidebarList.innerHTML = sorted
+      .map(p => {
+        const title = escapeHtml(p.title || 'Untitled');
+        const date = p.updated ? new Date(p.updated).toLocaleDateString() : '';
+        const isActive = p.id === notebook.activePageId && !p.archived;
+        const cls = ['nb-sidebar-item'];
+        if (isActive) cls.push('active');
+        if (p.archived) cls.push('archived');
+        if (p.pinned) cls.push('pinned');
+        const draggable = p.pinned ? 'true' : 'false';
+        const pinIndicator = p.pinned
+          ? `<span class="nb-sidebar-item-pin-indicator" title="Pinned" aria-label="Pinned">${NB_PIN_SVG}</span>`
+          : '';
+        return `<div class="${cls.join(' ')}" data-page-id="${p.id}" data-pinned="${p.pinned ? 'true' : 'false'}" draggable="${draggable}">
         <div class="nb-sidebar-item-info">
           <span class="nb-sidebar-item-title">${title}</span>
           <span class="nb-sidebar-item-date">${date}${p.archived ? ' &middot; archived' : ''}</span>
         </div>
-        <button class="nb-sidebar-item-delete" data-page-id="${p.id}" title="Delete permanently">&times;</button>
+        <div class="nb-sidebar-item-trailing">
+          ${pinIndicator}
+          <button type="button" class="nb-sidebar-item-delete" data-page-id="${p.id}" draggable="false" title="Delete permanently">&times;</button>
+        </div>
       </div>`;
-    }).join('');
+      })
+      .join('');
   }
+
+  function hideNbSidebarContextMenu() {
+    const menu = document.getElementById('nbSidebarContextMenu');
+    if (!menu) return;
+    menu.classList.add('hidden');
+    menu.setAttribute('aria-hidden', 'true');
+    nbContextPageId = null;
+  }
+
+  function showNbSidebarContextMenu(clientX, clientY, pageId) {
+    const menu = document.getElementById('nbSidebarContextMenu');
+    const btn = document.getElementById('nbSidebarCtxPin');
+    const page = notebook.pages.find(p => p.id === pageId);
+    if (!menu || !page || !btn) return;
+    nbContextPageId = pageId;
+    btn.textContent = page.pinned ? 'Unpin' : 'Pin';
+    menu.classList.remove('hidden');
+    menu.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      let left = clientX;
+      let top = clientY;
+      if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
+      if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+    });
+  }
+
+  nbSidebarList.addEventListener('contextmenu', e => {
+    const item = e.target.closest('.nb-sidebar-item');
+    if (!item) return;
+    e.preventDefault();
+    showNbSidebarContextMenu(e.clientX, e.clientY, item.dataset.pageId);
+  });
+
+  nbSidebarList.addEventListener('scroll', () => hideNbSidebarContextMenu());
+
+  document.getElementById('nbSidebarCtxPin').addEventListener('click', e => {
+    e.stopPropagation();
+    if (nbContextPageId) toggleSidebarPin(nbContextPageId);
+    hideNbSidebarContextMenu();
+  });
+
+  document.getElementById('nbSidebarCtxDelete').addEventListener('click', e => {
+    e.stopPropagation();
+    if (nbContextPageId) {
+      deletePagePermanently(nbContextPageId);
+      renderSidebar();
+    }
+    hideNbSidebarContextMenu();
+  });
+
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('nbSidebarContextMenu');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(e.target)) return;
+    hideNbSidebarContextMenu();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideNbSidebarContextMenu();
+  });
 
   nbSidebarList.addEventListener('click', (e) => {
     const deleteBtn = e.target.closest('.nb-sidebar-item-delete');
@@ -1774,10 +1937,57 @@
         page.archived = false;
       }
       notebook.activePageId = id;
+      markPageActivated(id);
       saveNotebook();
       renderNotebook({ forceEditorUpdate: true });
       if (isMobileViewport()) closeSidebar();
     }
+  });
+
+  nbSidebarList.addEventListener('dragstart', e => {
+    const row = e.target.closest('.nb-sidebar-item[draggable="true"]');
+    if (!row) return;
+    if (e.target.closest('button')) {
+      e.preventDefault();
+      return;
+    }
+    nbSidebarDragSourceId = row.dataset.pageId;
+    e.dataTransfer.setData('text/plain', row.dataset.pageId);
+    e.dataTransfer.effectAllowed = 'move';
+    row.classList.add('nb-sidebar-item-dragging');
+  });
+
+  nbSidebarList.addEventListener('dragend', () => {
+    nbSidebarDragSourceId = null;
+    nbSidebarList.querySelectorAll('.nb-sidebar-item-dragging').forEach(el => el.classList.remove('nb-sidebar-item-dragging'));
+    nbSidebarList.querySelectorAll('.nb-sidebar-drop-target').forEach(el => el.classList.remove('nb-sidebar-drop-target'));
+    nbSidebarDragOverEl = null;
+  });
+
+  nbSidebarList.addEventListener('dragover', e => {
+    const row = e.target.closest('.nb-sidebar-item[data-pinned="true"]');
+    if (!row || !nbSidebarDragSourceId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (nbSidebarDragOverEl && nbSidebarDragOverEl !== row) {
+      nbSidebarDragOverEl.classList.remove('nb-sidebar-drop-target');
+    }
+    nbSidebarDragOverEl = row;
+    row.classList.add('nb-sidebar-drop-target');
+  });
+
+  nbSidebarList.addEventListener('drop', e => {
+    const targetRow = e.target.closest('.nb-sidebar-item[data-pinned="true"]');
+    const draggedId = e.dataTransfer.getData('text/plain');
+    e.preventDefault();
+    nbSidebarList.querySelectorAll('.nb-sidebar-drop-target').forEach(el => el.classList.remove('nb-sidebar-drop-target'));
+    nbSidebarDragOverEl = null;
+    if (!targetRow || !draggedId) return;
+    const targetId = targetRow.dataset.pageId;
+    if (draggedId === targetId) return;
+    const rect = targetRow.getBoundingClientRect();
+    const insertBefore = e.clientY < rect.top + rect.height / 2;
+    reorderPinnedPages(draggedId, targetId, insertBefore);
   });
 
   notebookTabs.addEventListener('click', (e) => {
@@ -1786,9 +1996,10 @@
       archivePage(closeBtn.dataset.pageId);
       return;
     }
-    const tab = e.target.closest('.notebook-tab');
+    const tab = e.target.closest('.notebook-tab[data-page-id]');
     if (tab) {
       notebook.activePageId = tab.dataset.pageId;
+      markPageActivated(tab.dataset.pageId);
       saveNotebook();
       renderNotebook({ forceEditorUpdate: true });
     }
@@ -1803,7 +2014,8 @@
   });
 
   notebookAddBtn.addEventListener('click', () => {
-    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: Date.now(), archived: false };
+    const now = Date.now();
+    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: now, lastActiveAt: now, archived: false };
     notebook.pages.push(newPage);
     notebook.activePageId = newPage.id;
     saveNotebook();
@@ -2673,7 +2885,7 @@
   // ---- Initial render ----
   render();
   renderNotebook();
-  if (!isMobileViewport()) openSidebar();
+  renderSidebar();
   applyLayout();
   setTimeout(updateStickyOffsets, 50);
 
