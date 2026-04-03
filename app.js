@@ -796,7 +796,7 @@
         if (r.doneDate === forDate) return false;
 
         const freq = r.frequency || 'daily';
-        if (freq === 'daily') return true;
+        if (freq === 'daily') return forDate === dateKey(new Date());
         if (freq === 'weekly') return d.getDay() === r.dayOfWeek;
         if (freq === 'monthly') return d.getDate() === r.dayOfMonth;
         if (freq === 'yearly') return d.getMonth() === r.month && d.getDate() === r.dayOfMonth;
