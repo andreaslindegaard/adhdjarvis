@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 18;
+  const SW_SCRIPT_VERSION = 20;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -1580,21 +1580,33 @@
     if (changed) saveNotebook();
   })();
 
+  function getActivePages() {
+    return notebook.pages.filter(p => !p.archived);
+  }
+
+  function getArchivedPages() {
+    return notebook.pages.filter(p => p.archived);
+  }
+
   function getActivePage() {
-    return notebook.pages.find(p => p.id === notebook.activePageId) || notebook.pages[0];
+    const active = getActivePages();
+    return active.find(p => p.id === notebook.activePageId) || active[0];
   }
 
   function renderNotebook({ forceEditorUpdate = false } = {}) {
+    const activePages = getActivePages();
     let tabsHtml = '';
-    for (const page of notebook.pages) {
+    for (const page of activePages) {
       const active = page.id === notebook.activePageId ? 'active' : '';
       const title = page.title || 'Untitled';
       tabsHtml += `<button class="notebook-tab ${active}" data-page-id="${page.id}">
         ${escapeHtml(title)}
-        ${notebook.pages.length > 1 ? `<span class="tab-close" data-page-id="${page.id}">&times;</span>` : ''}
+        ${activePages.length > 1 ? `<span class="tab-close" data-page-id="${page.id}">&times;</span>` : ''}
       </button>`;
     }
     notebookTabs.innerHTML = tabsHtml;
+
+    if (nbSidebar.classList.contains('open')) renderSidebar();
 
     const page = getActivePage();
     const editorFocused = document.activeElement === notebookEditor;
@@ -1661,16 +1673,117 @@
     }
   });
 
+  function archivePage(id) {
+    const page = notebook.pages.find(p => p.id === id);
+    if (!page) return;
+    page.archived = true;
+    if (notebook.activePageId === id) {
+      const active = getActivePages();
+      notebook.activePageId = active[0]?.id;
+    }
+    saveNotebook();
+    renderNotebook({ forceEditorUpdate: true });
+  }
+
+  function restorePage(id) {
+    const page = notebook.pages.find(p => p.id === id);
+    if (!page) return;
+    page.archived = false;
+    notebook.activePageId = id;
+    saveNotebook();
+    renderNotebook({ forceEditorUpdate: true });
+  }
+
+  function deletePagePermanently(id) {
+    const page = notebook.pages.find(p => p.id === id);
+    const title = page ? (page.title || 'Untitled') : 'this page';
+    if (!confirm(`Permanently delete "${title}"? This cannot be undone.`)) return;
+    notebook.pages = notebook.pages.filter(p => p.id !== id);
+    saveNotebook();
+    renderNotebook({ forceEditorUpdate: true });
+  }
+
+  // ---- Notebook sidebar ----
+  const nbSidebar = document.getElementById('nbSidebar');
+  const nbSidebarOverlay = document.getElementById('nbSidebarOverlay');
+  const nbSidebarList = document.getElementById('nbSidebarList');
+  const nbSidebarToggle = document.getElementById('nbSidebarToggle');
+  const nbSidebarClose = document.getElementById('nbSidebarClose');
+  const nbSidebarNew = document.getElementById('nbSidebarNew');
+
+  function openSidebar() {
+    renderSidebar();
+    nbSidebar.classList.add('open');
+    if (isMobileViewport()) nbSidebarOverlay.classList.add('active');
+  }
+  function closeSidebar() {
+    nbSidebar.classList.remove('open');
+    nbSidebarOverlay.classList.remove('active');
+  }
+
+  nbSidebarToggle.addEventListener('click', () => {
+    if (nbSidebar.classList.contains('open')) closeSidebar();
+    else openSidebar();
+  });
+  nbSidebarClose.addEventListener('click', closeSidebar);
+  nbSidebarOverlay.addEventListener('click', closeSidebar);
+
+  nbSidebarNew.addEventListener('click', () => {
+    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: Date.now(), archived: false };
+    notebook.pages.push(newPage);
+    notebook.activePageId = newPage.id;
+    saveNotebook();
+    renderNotebook({ forceEditorUpdate: true });
+    if (isMobileViewport()) closeSidebar();
+    notebookTitle.focus();
+  });
+
+  function renderSidebar() {
+    const sorted = [...notebook.pages].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    nbSidebarList.innerHTML = sorted.map(p => {
+      const title = escapeHtml(p.title || 'Untitled');
+      const date = p.updated ? new Date(p.updated).toLocaleDateString() : '';
+      const isActive = p.id === notebook.activePageId && !p.archived;
+      const cls = ['nb-sidebar-item'];
+      if (isActive) cls.push('active');
+      if (p.archived) cls.push('archived');
+      return `<div class="${cls.join(' ')}" data-page-id="${p.id}">
+        <div class="nb-sidebar-item-info">
+          <span class="nb-sidebar-item-title">${title}</span>
+          <span class="nb-sidebar-item-date">${date}${p.archived ? ' &middot; archived' : ''}</span>
+        </div>
+        <button class="nb-sidebar-item-delete" data-page-id="${p.id}" title="Delete permanently">&times;</button>
+      </div>`;
+    }).join('');
+  }
+
+  nbSidebarList.addEventListener('click', (e) => {
+    const deleteBtn = e.target.closest('.nb-sidebar-item-delete');
+    if (deleteBtn) {
+      e.stopPropagation();
+      deletePagePermanently(deleteBtn.dataset.pageId);
+      renderSidebar();
+      return;
+    }
+    const item = e.target.closest('.nb-sidebar-item');
+    if (item) {
+      const id = item.dataset.pageId;
+      const page = notebook.pages.find(p => p.id === id);
+      if (!page) return;
+      if (page.archived) {
+        page.archived = false;
+      }
+      notebook.activePageId = id;
+      saveNotebook();
+      renderNotebook({ forceEditorUpdate: true });
+      if (isMobileViewport()) closeSidebar();
+    }
+  });
+
   notebookTabs.addEventListener('click', (e) => {
     const closeBtn = e.target.closest('.tab-close');
     if (closeBtn) {
-      const id = closeBtn.dataset.pageId;
-      notebook.pages = notebook.pages.filter(p => p.id !== id);
-      if (notebook.activePageId === id) {
-        notebook.activePageId = notebook.pages[0]?.id;
-      }
-      saveNotebook();
-      renderNotebook({ forceEditorUpdate: true });
+      archivePage(closeBtn.dataset.pageId);
       return;
     }
     const tab = e.target.closest('.notebook-tab');
@@ -1690,7 +1803,7 @@
   });
 
   notebookAddBtn.addEventListener('click', () => {
-    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: Date.now() };
+    const newPage = { id: crypto.randomUUID(), title: '', content: '', updated: Date.now(), archived: false };
     notebook.pages.push(newPage);
     notebook.activePageId = newPage.id;
     saveNotebook();
@@ -2481,6 +2594,9 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (nbSidebar.classList.contains('open')) {
+        closeSidebar();
+      }
       if (calPickerOverlay.classList.contains('active')) {
         closeCalPicker();
       }
@@ -2557,6 +2673,7 @@
   // ---- Initial render ----
   render();
   renderNotebook();
+  if (!isMobileViewport()) openSidebar();
   applyLayout();
   setTimeout(updateStickyOffsets, 50);
 

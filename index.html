@@ -1088,10 +1088,12 @@
         padding: 8px 12px;
         font-size: 0.76rem;
       }
+      .notebook-tab .tab-close {
+        display: none;
+      }
       .notebook-resize-handle {
         display: none;
       }
-
       /* --- Edit note inline --- */
       .edit-reminder-row {
         gap: 6px;
@@ -1918,9 +1920,202 @@
       border-color: var(--accent);
     }
 
+    /* ---- Notebook sidebar ---- */
+    .nb-sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 900;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      display: none;
+    }
+    .nb-sidebar-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .nb-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 910;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: var(--shadow-lg);
+    }
+    .nb-sidebar.open {
+      transform: translateX(0);
+    }
+
+    .nb-sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 16px 8px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .nb-sidebar-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .nb-sidebar-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 1.3rem;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .nb-sidebar-close:hover {
+      color: var(--text);
+    }
+
+    .nb-sidebar-new {
+      margin: 10px 12px 6px;
+      background: none;
+      border: 1px dashed var(--border);
+      color: var(--text-secondary);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-family: inherit;
+      font-weight: 500;
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .nb-sidebar-new:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .nb-sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 8px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nb-sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .nb-sidebar-item:hover {
+      background: var(--surface-hover);
+    }
+    .nb-sidebar-item.active {
+      background: var(--accent-soft);
+    }
+    .nb-sidebar-item.archived {
+      opacity: 0.55;
+    }
+    .nb-sidebar-item.archived:hover {
+      opacity: 0.8;
+    }
+
+    .nb-sidebar-item-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .nb-sidebar-item-title {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nb-sidebar-item-date {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+
+    .nb-sidebar-item-delete {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 2px 4px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.12s, color 0.12s;
+      flex-shrink: 0;
+    }
+    .nb-sidebar-item:hover .nb-sidebar-item-delete {
+      opacity: 1;
+    }
+    .nb-sidebar-item-delete:hover {
+      color: var(--accent);
+    }
+
+    .nb-sidebar-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .nb-sidebar-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    @media (max-width: 600px) {
+      .nb-sidebar {
+        width: 80%;
+        max-width: 320px;
+      }
+      .nb-sidebar-overlay {
+        display: block;
+      }
+      .nb-sidebar-item-delete {
+        opacity: 0.6;
+      }
+    }
+
   </style>
 </head>
 <body>
+
+  <div class="nb-sidebar-overlay" id="nbSidebarOverlay"></div>
+  <div class="nb-sidebar" id="nbSidebar">
+    <div class="nb-sidebar-header">
+      <span class="nb-sidebar-title">Notebook</span>
+      <button class="nb-sidebar-close" id="nbSidebarClose" title="Close sidebar">&times;</button>
+    </div>
+    <button class="nb-sidebar-new" id="nbSidebarNew">+ New page</button>
+    <div class="nb-sidebar-list" id="nbSidebarList"></div>
+  </div>
 
   <div class="topbar">
     <h1><span>ADHD</span> Jarvis</h1>
@@ -1963,6 +2158,9 @@
       </div>
       <div id="notebookContent">
         <div class="notebook-tabs-row">
+          <button class="nb-sidebar-toggle" id="nbSidebarToggle" title="Notebook pages">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="4" x2="16" y2="4"/><line x1="2" y1="9" x2="16" y2="9"/><line x1="2" y1="14" x2="16" y2="14"/></svg>
+          </button>
           <div class="notebook-tabs" id="notebookTabs"></div>
           <button class="notebook-add-btn" id="notebookAddBtn">+ New page</button>
         </div>
@@ -2081,7 +2279,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=1"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=32"></script>
 
 </body>
 </html>
