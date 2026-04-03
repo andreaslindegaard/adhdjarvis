@@ -343,8 +343,15 @@
       const recurringNotes = getRecurringForDate(key);
       const dayNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
 
+      const st = searchTerm ? searchTerm.toLowerCase() : '';
       const matchingNotes = searchTerm
-        ? dayNotes.filter(n => n.text.toLowerCase().includes(searchTerm.toLowerCase()))
+        ? dayNotes.filter(n => {
+            if (n.text && n.text.toLowerCase().includes(st)) return true;
+            if (n.smartList && Array.isArray(n.listItems)) {
+              return n.listItems.some(li => (li.text || '').toLowerCase().includes(st));
+            }
+            return false;
+          })
         : dayNotes;
 
       if (searchTerm && matchingNotes.length === 0) {
@@ -400,10 +407,7 @@
       if (matchingNotes.length > 0) {
         html += `<div class="notes-list">`;
         for (const note of matchingNotes) {
-          const doneClass = note.done ? 'done' : '';
-          const checked = note.done ? 'checked' : '';
           const recurringClass = note.isRecurring ? 'is-recurring' : '';
-          const eventClass = note.isEvent ? 'is-event' : '';
           const freqText = note.frequency === 'yearly' ? '\u00c5rlig' :
                            note.frequency === 'monthly' ? 'M\u00e5nedlig' :
                            note.frequency === 'biweekly' ? 'Hver 14. dag' :
@@ -411,6 +415,46 @@
           const recurringBadge = note.isRecurring ? `<span class="recurring-badge" title="${freqText}">&#x21bb;</span>` : '';
           const leadBadge = note.leadTime ? `<span class="lead-badge" title="Remind ${note.leadTime}min before">\u23f0-${note.leadTime >= 60 ? (note.leadTime/60) + 'h' : note.leadTime + 'm'}</span>` : '';
           const recurringId = note.recurringId || '';
+
+          if (note.smartList && (note.smartList === 'todo' || note.smartList === 'shopping')) {
+            const slClass = note.smartList === 'todo' ? 'smart-list-todo' : 'smart-list-shopping';
+            const slLabel = note.smartList === 'todo' ? 'To-do list' : 'Shopping list';
+            const items = Array.isArray(note.listItems) ? note.listItems : [];
+            let rowsHtml = '';
+            for (const li of items) {
+              const lic = li.done ? 'checked' : '';
+              const lidone = li.done ? ' smart-list-item-done' : '';
+              const itemText = (li.text || '').trim()
+                ? renderRichText(li.text)
+                : '<span class="smart-list-item-placeholder">Empty line</span>';
+              rowsHtml += `<div class="smart-list-row${lidone}">
+                <input type="checkbox" class="smart-list-item-cb" ${lic} data-id="${note.id}" data-date="${key}" data-item-id="${li.id}">
+                <div class="note-text smart-list-item-text">${itemText}</div>
+              </div>`;
+            }
+            const titleHtml = (note.text || '').trim()
+              ? `<div class="smart-list-title note-text">${renderRichText(note.text)}</div>`
+              : '';
+            html += `<div class="note-wrap" data-id="${note.id}" data-date="${key}" data-recurring-id="">
+              <div class="note-item smart-list-note ${slClass} ${recurringClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="">
+                <div class="smart-list-inner">
+                  <div class="smart-list-header"><span class="smart-list-type-label">${slLabel}</span></div>
+                  ${titleHtml}
+                  <div class="smart-list-rows">${rowsHtml}</div>
+                  <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
+                </div>
+              </div>
+              <div class="note-actions">
+                <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="">&times;</button>
+                <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="" title="Rediger">&#x270e;</button>
+              </div>
+            </div>`;
+            continue;
+          }
+
+          const doneClass = note.done ? 'done' : '';
+          const checked = note.done ? 'checked' : '';
+          const eventClass = note.isEvent ? 'is-event' : '';
           const displayText = renderRichText(note.text);
           const checkboxHtml = note.isEvent
             ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
@@ -498,8 +542,25 @@
       } else {
         const note = (notes[date] || []).find(n => n.id === id);
         if (note) {
-          note.text = note.text.replace(url, '').replace(/\s{2,}/g, ' ').trim();
-          saveNotes(notes);
+          if (note.smartList && note.listItems) {
+            let changed = false;
+            if (note.text && note.text.includes(url)) {
+              note.text = note.text.replace(url, '').replace(/\s{2,}/g, ' ').trim();
+              changed = true;
+            } else {
+              for (const li of note.listItems) {
+                if (li.text && li.text.includes(url)) {
+                  li.text = li.text.replace(url, '').replace(/\s{2,}/g, ' ').trim();
+                  changed = true;
+                  break;
+                }
+              }
+            }
+            if (changed) saveNotes(notes);
+          } else {
+            note.text = note.text.replace(url, '').replace(/\s{2,}/g, ' ').trim();
+            saveNotes(notes);
+          }
         }
       }
       render();
@@ -508,6 +569,21 @@
 
     const target = e.target.closest('[class]');
     if (!target) return;
+
+    if (target.classList.contains('smart-list-item-cb')) {
+      const { id, date, itemId } = target.dataset;
+      const dayNotes = notes[date] || [];
+      const note = dayNotes.find(n => n.id === id);
+      if (note && note.listItems) {
+        const item = note.listItems.find(li => li.id === itemId);
+        if (item) {
+          item.done = target.checked;
+          saveNotes(notes);
+          render();
+        }
+      }
+      return;
+    }
 
     if (target.classList.contains('note-checkbox')) {
       const { id, date, recurringId } = target.dataset;
@@ -535,16 +611,87 @@
     }
 
     // Edit via pencil button or clicking note text
-    if (target.classList.contains('note-edit') || target.classList.contains('note-text')) {
+    if (target.classList.contains('note-edit') || target.classList.contains('note-text') ||
+        (target.closest('.smart-list-note') && !target.classList.contains('smart-list-item-cb'))) {
       const noteWrap = target.closest('.note-wrap');
       const noteItem = noteWrap ? noteWrap.querySelector('.note-item') : target.closest('.note-item');
       if (!noteItem) return;
-      const noteText = noteItem.querySelector('.note-text');
 
       // Already editing? Do nothing
       if (noteItem.querySelector('.note-edit-input')) return;
 
       const { id, date, recurringId } = noteItem.dataset;
+
+      if (!recurringId) {
+        const dayNotes = notes[date] || [];
+        const slNote = dayNotes.find(n => n.id === id);
+        if (slNote && slNote.smartList) {
+          const inner = noteItem.querySelector('.smart-list-inner');
+          if (!inner) return;
+
+          const editWrap = document.createElement('div');
+          editWrap.className = 'note-edit-wrap smart-list-edit-wrap';
+
+          const titleInput = document.createElement('input');
+          titleInput.type = 'text';
+          titleInput.className = 'smart-list-edit-title';
+          titleInput.placeholder = 'Title (optional)';
+          titleInput.value = slNote.text || '';
+
+          const itemsLabel = document.createElement('div');
+          itemsLabel.className = 'smart-list-edit-label';
+          itemsLabel.textContent = 'Items (one per line)';
+
+          const itemsTa = document.createElement('textarea');
+          itemsTa.className = 'note-edit-input smart-list-edit-items';
+          itemsTa.rows = Math.max(3, (slNote.listItems || []).length || 1);
+          itemsTa.value = (slNote.listItems || []).map(li => li.text || '').join('\n');
+
+          editWrap.appendChild(titleInput);
+          editWrap.appendChild(itemsLabel);
+          editWrap.appendChild(itemsTa);
+          inner.replaceWith(editWrap);
+          titleInput.focus();
+
+          let saved = false;
+          function saveSmartListEdit() {
+            if (saved) return;
+            saved = true;
+            const newTitle = titleInput.value.trim();
+            const lines = itemsTa.value.split('\n').map(l => l.trim()).filter(Boolean);
+            const oldItems = slNote.listItems || [];
+            const newItems = lines.map((line, i) => ({
+              id: oldItems[i]?.id || crypto.randomUUID(),
+              text: applySmartLinks(line),
+              done: oldItems[i] && oldItems[i].text === line ? oldItems[i].done : false
+            }));
+            if (!newTitle && newItems.length === 0) {
+              render();
+              return;
+            }
+            slNote.text = newTitle ? applySmartLinks(newTitle) : '';
+            slNote.listItems = newItems.length ? newItems : [{ id: crypto.randomUUID(), text: '', done: false }];
+            notes[date] = sortNotesByTime(notes[date]);
+            saveNotes(notes);
+            render();
+          }
+
+          editWrap.addEventListener('focusout', (ev) => {
+            if (editWrap.contains(ev.relatedTarget)) return;
+            saveSmartListEdit();
+          });
+          itemsTa.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') render();
+          });
+          titleInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') render();
+          });
+          return;
+        }
+      }
+
+      const noteText = noteItem.querySelector('.note-text');
+      if (!noteText) return;
 
       // Get raw text, current leadTime, and isEvent
       let rawText, currentLeadTime, currentIsEvent;
@@ -866,6 +1013,7 @@
 
   doc.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && e.target.matches('.add-note-form textarea')) {
+      if (calendarSmartListMenuOpen) return;
       e.preventDefault();
       const form = e.target.closest('.add-note-form');
       const uiLeadTime = form?.dataset.leadTime ? parseInt(form.dataset.leadTime) : null;
@@ -878,8 +1026,42 @@
     if (e.target.matches('.add-note-form textarea')) {
       e.target.style.height = 'auto';
       e.target.style.height = e.target.scrollHeight + 'px';
+      updateCalendarSmartListMenu(e.target);
     }
   });
+
+  document.addEventListener('mousedown', (e) => {
+    const opt = e.target.closest('.calendar-smart-list-option');
+    if (!opt) return;
+    e.preventDefault();
+    const menu = document.getElementById('calendarSmartListMenu');
+    const date = menu?.dataset.date;
+    const ta = calendarSmartListAnchor;
+    const type = opt.dataset.type;
+    if (date && ta && (type === 'todo' || type === 'shopping')) {
+      const cur = ta.selectionStart;
+      const v = ta.value;
+      const token = getCalendarAtToken(v, cur);
+      if (token) {
+        ta.value = v.slice(0, token.start) + v.slice(cur);
+        ta.selectionStart = ta.selectionEnd = token.start;
+      }
+      addSmartListNote(date, type);
+    }
+    hideCalendarSmartListMenu();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!calendarSmartListMenuOpen) return;
+    if (e.target.closest('#calendarSmartListMenu')) return;
+    hideCalendarSmartListMenu();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && calendarSmartListMenuOpen) hideCalendarSmartListMenu();
+  });
+
+  doc.addEventListener('scroll', () => hideCalendarSmartListMenu(), true);
 
   // Markdown-style shortcuts for all editable textareas:
   // Ctrl+B => **bold**, Ctrl+Shift+8 => bullets, Ctrl+Shift+7 => numbered list
@@ -1183,6 +1365,118 @@
     notes[date] = sortNotesByTime(notes[date]);
     saveNotes(notes);
     render();
+  }
+
+  function addSmartListNote(date, listType) {
+    if (!notes[date]) notes[date] = [];
+    if (notes[date].some(n => n.smartList === listType)) {
+      const label = listType === 'todo' ? 'to-do' : 'shopping';
+      alert(`There is already a ${label} list on this day.`);
+      return;
+    }
+    notes[date].push({
+      id: crypto.randomUUID(),
+      text: '',
+      done: false,
+      time: null,
+      leadTime: null,
+      isEvent: false,
+      smartList: listType,
+      listItems: [{ id: crypto.randomUUID(), text: '', done: false }]
+    });
+    notes[date] = sortNotesByTime(notes[date]);
+    saveNotes(notes);
+    render();
+  }
+
+  function getCalendarAtToken(text, cursor) {
+    const before = text.slice(0, cursor);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx === -1) return null;
+    const afterAt = before.slice(atIdx + 1);
+    if (/[\s\n]/.test(afterAt)) return null;
+    return { start: atIdx, query: afterAt };
+  }
+
+  function getTextareaCaretRect(textarea, position) {
+    const mirror = document.createElement('div');
+    const style = window.getComputedStyle(textarea);
+    [
+      'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
+      'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+      'borderLeftWidth', 'borderTopWidth', 'width', 'boxSizing'
+    ].forEach((prop) => {
+      mirror.style[prop] = style[prop];
+    });
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordWrap = 'break-word';
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.left = '-9999px';
+    mirror.style.top = '0';
+    const before = textarea.value.substring(0, position);
+    mirror.textContent = before;
+    const span = document.createElement('span');
+    span.textContent = textarea.value.substring(position) || '.';
+    mirror.appendChild(span);
+    document.body.appendChild(mirror);
+    const taRect = textarea.getBoundingClientRect();
+    const top = span.offsetTop + parseFloat(style.paddingTop || '0') + parseFloat(style.borderTopWidth || '0');
+    const left = span.offsetLeft + parseFloat(style.paddingLeft || '0') + parseFloat(style.borderLeftWidth || '0');
+    document.body.removeChild(mirror);
+    return {
+      top: taRect.top + top - textarea.scrollTop,
+      left: taRect.left + left - textarea.scrollLeft
+    };
+  }
+
+  let calendarSmartListMenuOpen = false;
+  let calendarSmartListAnchor = null;
+
+  function hideCalendarSmartListMenu() {
+    const menu = document.getElementById('calendarSmartListMenu');
+    if (!menu) return;
+    menu.classList.add('hidden');
+    menu.setAttribute('aria-hidden', 'true');
+    calendarSmartListMenuOpen = false;
+    calendarSmartListAnchor = null;
+  }
+
+  function positionCalendarSmartListMenu(textarea) {
+    const menu = document.getElementById('calendarSmartListMenu');
+    if (!menu || !textarea) return;
+    const pos = textarea.selectionStart;
+    const { top, left } = getTextareaCaretRect(textarea, pos);
+    const lh = parseFloat(window.getComputedStyle(textarea).lineHeight) || 20;
+    let menuTop = top + lh + 4;
+    let menuLeft = left;
+    const mw = menu.offsetWidth || 160;
+    const mh = menu.offsetHeight || 72;
+    if (menuLeft + mw > window.innerWidth - 8) menuLeft = window.innerWidth - mw - 8;
+    if (menuTop + mh > window.innerHeight - 8) menuTop = top - mh - 4;
+    if (menuLeft < 8) menuLeft = 8;
+    if (menuTop < 8) menuTop = 8;
+    menu.style.left = `${menuLeft}px`;
+    menu.style.top = `${menuTop}px`;
+  }
+
+  function updateCalendarSmartListMenu(textarea) {
+    const menu = document.getElementById('calendarSmartListMenu');
+    if (!menu) return;
+    const cur = textarea.selectionStart;
+    const token = getCalendarAtToken(textarea.value, cur);
+    if (!token) {
+      hideCalendarSmartListMenu();
+      return;
+    }
+    menu.dataset.date = textarea.dataset.date || '';
+    calendarSmartListAnchor = textarea;
+    calendarSmartListMenuOpen = true;
+    menu.classList.remove('hidden');
+    menu.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => positionCalendarSmartListMenu(textarea));
+    });
   }
 
   // ---- Search ----
@@ -2181,7 +2475,7 @@
     const allNotes = [...todayNotes, ...recurringToday];
 
     for (const note of allNotes) {
-      if (!note.time || note.done) continue;
+      if (!note.time || note.done || note.smartList) continue;
 
       const uniqueId = `${todayKey}-${note.id}`;
       if (sent.ids.includes(uniqueId)) continue;
@@ -2218,6 +2512,15 @@
   }
 
   // ---- Morning briefing ----
+  function briefingHtmlToPlain(html) {
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+  }
+
   function buildMorningBriefing() {
     const todayKey = dateKey(new Date());
     const todayDate = new Date();
@@ -2225,11 +2528,48 @@
     const monthName = MONTHS[todayDate.getMonth()];
     const dayNum = todayDate.getDate();
 
-    const regularNotes = sortNotesByTime(notes[todayKey] || []).filter(n => !n.done);
+    const dayRaw = notes[todayKey] || [];
+    const smartTodoNotes = dayRaw.filter(n => n.smartList === 'todo');
+    const smartShopNotes = dayRaw.filter(n => n.smartList === 'shopping');
+
+    const regularNotes = sortNotesByTime(dayRaw.filter(n => !n.smartList && !n.done));
     const recurringNotes = getRecurringForDate(todayKey).filter(n => !n.done);
     const allNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
 
-    if (allNotes.length === 0) return null;
+    const todoBlocks = [];
+    for (const n of smartTodoNotes) {
+      const items = (n.listItems || []).filter(li => !li.done && (li.text || '').trim());
+      if (!items.length) continue;
+      const lines = [];
+      if ((n.text || '').trim()) {
+        lines.push(`<b>${(n.text || '').replace(/https?:\/\/[^\s]+/g, '').trim()}</b>`);
+      }
+      for (const li of items) {
+        const cleanText = (li.text || '').replace(/https?:\/\/[^\s]+/g, '').trim();
+        lines.push(`  \u2610 ${cleanText}`);
+      }
+      todoBlocks.push(lines.join('\n'));
+    }
+
+    const shopBlocks = [];
+    for (const n of smartShopNotes) {
+      const items = (n.listItems || []).filter(li => !li.done && (li.text || '').trim());
+      if (!items.length) continue;
+      const lines = [];
+      if ((n.text || '').trim()) {
+        lines.push(`<b>${(n.text || '').replace(/https?:\/\/[^\s]+/g, '').trim()}</b>`);
+      }
+      for (const li of items) {
+        const cleanText = (li.text || '').replace(/https?:\/\/[^\s]+/g, '').trim();
+        lines.push(`  \u2610 ${cleanText}`);
+      }
+      shopBlocks.push(lines.join('\n'));
+    }
+
+    const hasTodo = todoBlocks.length > 0;
+    const hasShop = shopBlocks.length > 0;
+
+    if (allNotes.length === 0 && !hasTodo && !hasShop) return null;
 
     let msg = `<b>\u2600\ufe0f Good morning! Here's your ${dayName}</b>\n`;
     msg += `<i>${monthName} ${dayNum}</i>\n\n`;
@@ -2257,13 +2597,31 @@
       msg += '\n';
     }
 
-    msg += `<i>${allNotes.length} thing${allNotes.length !== 1 ? 's' : ''} on your plate. You got this \ud83d\udcaa</i>`;
+    if (hasTodo) {
+      msg += `<b>\ud83d\udccb To-do</b>\n`;
+      msg += `${todoBlocks.join('\n\n')}\n\n`;
+    }
+    if (hasShop) {
+      msg += `<b>\ud83d\uded2 Shopping</b>\n`;
+      msg += `${shopBlocks.join('\n\n')}\n\n`;
+    }
+
+    let smartItemCount = 0;
+    for (const n of smartTodoNotes) {
+      smartItemCount += (n.listItems || []).filter(li => !li.done && (li.text || '').trim()).length;
+    }
+    for (const n of smartShopNotes) {
+      smartItemCount += (n.listItems || []).filter(li => !li.done && (li.text || '').trim()).length;
+    }
+    const totalCount = allNotes.length + smartItemCount;
+    msg += `<i>${totalCount} thing${totalCount !== 1 ? 's' : ''} on your plate. You got this \ud83d\udcaa</i>`;
     return msg;
   }
 
   function checkMorningBriefing() {
     const s = loadNotifSettings();
-    if (!s.telegramEnabled || !s.morningBriefing) return;
+    if (!s.morningBriefing) return;
+    if (!s.telegramEnabled && !s.browserEnabled) return;
 
     const now = new Date();
     const todayKey = dateKey(now);
@@ -2278,13 +2636,18 @@
 
     const diffMs = now.getTime() - briefingTime.getTime();
     if (diffMs >= 0 && diffMs < 120000) {
-      const msg = buildMorningBriefing();
-      if (msg) {
-        sendTelegramMessage(msg);
+      const msgHtml = buildMorningBriefing();
+      if (msgHtml) {
+        const plain = briefingHtmlToPlain(msgHtml);
+        if (s.telegramEnabled) sendTelegramMessage(msgHtml);
+        if (s.browserEnabled) sendBrowserNotification('ADHD Jarvis', plain);
         markNotifSent(briefingId);
       } else {
         const dayName = WEEKDAYS[now.getDay()];
-        sendTelegramMessage(`<b>\u2600\ufe0f Good morning!</b>\nNothing scheduled for ${dayName}. Enjoy your free day! \ud83c\udf89`);
+        const fallbackHtml = `<b>\u2600\ufe0f Good morning!</b>\nNothing scheduled for ${dayName}. Enjoy your free day! \ud83c\udf89`;
+        const fallbackPlain = briefingHtmlToPlain(fallbackHtml);
+        if (s.telegramEnabled) sendTelegramMessage(fallbackHtml);
+        if (s.browserEnabled) sendBrowserNotification('ADHD Jarvis', fallbackPlain);
         markNotifSent(briefingId);
       }
     }
