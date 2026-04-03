@@ -1368,6 +1368,7 @@
   let nbDragStartH = 0;
 
   function onNbDragMove(e) {
+    if (e.cancelable) e.preventDefault();
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const delta = clientY - nbDragStartY;
     const newH = Math.max(40, Math.min(window.innerHeight * 0.7, nbDragStartH + delta));
