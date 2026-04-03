@@ -41,6 +41,7 @@
   const STORAGE_KEY = 'endless-planner-notes';
   const RECURRING_KEY = 'endless-planner-recurring';
   const SMARTLINKS_KEY = 'endless-planner-smartlinks';
+  const LAYOUT_KEY = 'endless-planner-layout';
 
   function loadNotes() {
     try {
@@ -86,6 +87,18 @@
 
   let smartLinks = loadSmartLinks() || defaultSmartLinks;
   if (!loadSmartLinks()) saveSmartLinks();
+
+  function loadLayout() {
+    try {
+      return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || { mode: 'split', activeTab: 'calendar' };
+    } catch { return { mode: 'split', activeTab: 'calendar' }; }
+  }
+
+  function saveLayout() {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layoutState));
+  }
+
+  let layoutState = loadLayout();
 
   function applySmartLinks(text) {
     const lower = text.toLowerCase();
@@ -922,7 +935,13 @@
         renderNotebook();
       }
 
-      if (notebook.collapsed) {
+      if (layoutState.mode === 'tabs') {
+        if (layoutState.activeTab !== 'notebook') {
+          layoutState.activeTab = 'notebook';
+          saveLayout();
+          applyLayout();
+        }
+      } else if (notebook.collapsed) {
         notebook.collapsed = false;
         saveNotebook();
         renderNotebook();
@@ -1000,6 +1019,11 @@
   document.getElementById('todayBtn').addEventListener('click', () => {
     searchBox.value = '';
     searchTerm = '';
+    if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
+      layoutState.activeTab = 'calendar';
+      saveLayout();
+      applyLayout();
+    }
     render();
     setTimeout(() => scrollCalendarToToday('smooth'), 50);
   });
@@ -1316,6 +1340,7 @@
   });
 
   notebookToggle.addEventListener('click', () => {
+    if (layoutState.mode === 'tabs') return;
     notebook.collapsed = !notebook.collapsed;
     saveNotebook();
     renderNotebook();
@@ -1687,27 +1712,40 @@
   function updateStickyOffsets() {
     const topbarH = document.querySelector('.topbar').offsetHeight;
     const nbSection = document.getElementById('notebookSection');
+    const viewTabsEl = document.getElementById('viewTabs');
 
-    nbSection.style.top = topbarH + 'px';
-
-    const nbH = nbSection.offsetHeight;
-    const totalOffset = topbarH + nbH;
-
-    document.querySelectorAll('.month-header').forEach(mh => {
-      mh.style.top = totalOffset + 'px';
-    });
+    if (layoutState.mode === 'tabs') {
+      viewTabsEl.style.top = topbarH + 'px';
+      const viewTabsH = viewTabsEl.offsetHeight;
+      document.querySelectorAll('.month-header').forEach(mh => {
+        mh.style.top = (topbarH + viewTabsH) + 'px';
+      });
+    } else {
+      nbSection.style.top = topbarH + 'px';
+      const nbH = nbSection.offsetHeight;
+      const totalOffset = topbarH + nbH;
+      document.querySelectorAll('.month-header').forEach(mh => {
+        mh.style.top = totalOffset + 'px';
+      });
+    }
   }
 
-  /** Scroll so today's day row (date + weekday + label) sits below topbar + notebook + month header. */
   function scrollCalendarToToday(behavior) {
     updateStickyOffsets();
     const el = document.querySelector('.day-block.is-today');
     if (!el) return;
 
     const topbar = document.querySelector('.topbar');
-    const nbSection = document.getElementById('notebookSection');
     const topbarH = topbar ? topbar.offsetHeight : 0;
-    const nbH = nbSection ? nbSection.offsetHeight : 0;
+    let stickyH = topbarH;
+
+    if (layoutState.mode === 'tabs') {
+      const viewTabsEl = document.getElementById('viewTabs');
+      stickyH += viewTabsEl ? viewTabsEl.offsetHeight : 0;
+    } else {
+      const nbSection = document.getElementById('notebookSection');
+      stickyH += nbSection ? nbSection.offsetHeight : 0;
+    }
 
     let prev = el.previousElementSibling;
     while (prev && !prev.classList.contains('month-header')) {
@@ -1715,7 +1753,7 @@
     }
     const monthHeaderH = prev && prev.classList.contains('month-header') ? prev.offsetHeight : 0;
 
-    const pad = topbarH + nbH + monthHeaderH + 10;
+    const pad = stickyH + monthHeaderH + 10;
     const y = el.getBoundingClientRect().top + window.scrollY - pad;
     window.scrollTo({
       top: Math.max(0, y),
@@ -1850,9 +1888,70 @@
     }
   }
 
+  // ---- Layout mode (split / tabs) ----
+  const SPLIT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="5.5" rx="1"/><rect x="1.5" y="9" width="13" height="5.5" rx="1"/></svg>';
+  const TABS_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="5" width="13" height="9.5" rx="1"/><rect x="1.5" y="1.5" width="5" height="4.5" rx="1" fill="currentColor" stroke="none"/><rect x="8.5" y="1.5" width="5" height="4.5" rx="1"/></svg>';
+
+  function applyLayout() {
+    const viewTabs = document.getElementById('viewTabs');
+    const nbSection = document.getElementById('notebookSection');
+    const plannerRoot = document.getElementById('plannerRoot');
+    const toggleBtn = document.getElementById('viewToggleBtn');
+
+    if (layoutState.mode === 'tabs') {
+      document.body.classList.add('layout-tabs');
+      document.body.classList.remove('layout-split');
+      viewTabs.classList.add('visible');
+
+      viewTabs.querySelectorAll('.view-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.view === layoutState.activeTab);
+      });
+
+      if (layoutState.activeTab === 'notebook') {
+        nbSection.classList.remove('hidden');
+        plannerRoot.classList.add('hidden');
+        notebookContent.classList.remove('notebook-collapsed');
+      } else {
+        nbSection.classList.add('hidden');
+        plannerRoot.classList.remove('hidden');
+      }
+
+      toggleBtn.innerHTML = SPLIT_ICON;
+      toggleBtn.title = 'Switch to split view';
+    } else {
+      document.body.classList.remove('layout-tabs');
+      document.body.classList.add('layout-split');
+      viewTabs.classList.remove('visible');
+
+      nbSection.classList.remove('hidden');
+      plannerRoot.classList.remove('hidden');
+      renderNotebook();
+
+      toggleBtn.innerHTML = TABS_ICON;
+      toggleBtn.title = 'Switch to tab view';
+    }
+
+    setTimeout(updateStickyOffsets, 10);
+  }
+
+  document.getElementById('viewToggleBtn').addEventListener('click', () => {
+    layoutState.mode = layoutState.mode === 'split' ? 'tabs' : 'split';
+    saveLayout();
+    applyLayout();
+  });
+
+  document.getElementById('viewTabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.view-tab');
+    if (!tab) return;
+    layoutState.activeTab = tab.dataset.view;
+    saveLayout();
+    applyLayout();
+  });
+
   // ---- Initial render ----
   render();
   renderNotebook();
+  applyLayout();
   setTimeout(updateStickyOffsets, 50);
 
   registerServiceWorker();

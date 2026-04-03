@@ -1139,6 +1139,75 @@
       background: var(--accent);
     }
 
+    /* ---- View mode toggle ---- */
+    .view-toggle-btn {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 34px !important;
+      padding: 6px !important;
+    }
+
+    .view-tabs {
+      display: none;
+      background: rgba(245, 240, 232, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-light);
+      justify-content: center;
+      position: sticky;
+      z-index: 95;
+    }
+
+    .view-tabs.visible { display: flex; }
+
+    .view-tab {
+      background: none;
+      border: none;
+      border-bottom: 2.5px solid transparent;
+      color: var(--text-dim);
+      padding: 10px 24px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+
+    .view-tab:hover {
+      color: var(--text-secondary);
+      background: var(--surface-hover);
+    }
+
+    .view-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    body.layout-tabs .notebook-section {
+      position: static;
+      box-shadow: none;
+      border-bottom: none;
+    }
+
+    body.layout-tabs .notebook-header {
+      display: none;
+    }
+
+    body.layout-tabs .notebook-resize-handle {
+      display: none;
+    }
+
+    body.layout-tabs .notebook-editor {
+      max-height: none;
+      min-height: 60vh;
+    }
+
+    body.layout-tabs .notebook-body {
+      border-radius: var(--radius);
+    }
+
   </style>
 </head>
 <body>
@@ -1148,6 +1217,7 @@
     <div class="topbar-actions">
       <input type="text" class="search-box" placeholder="Search notes..." id="searchBox">
       <button class="today-btn" id="todayBtn">Today</button>
+      <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
       <div class="more-menu-wrap">
         <button id="moreMenuBtn" class="more-menu-btn" title="Mere">&#x22ef;</button>
         <div class="more-menu hidden" id="moreMenu">
@@ -1159,6 +1229,11 @@
       </div>
     </div>
     <span id="syncStatus" style="font-size:0.7rem; color:var(--text-dim);"></span>
+  </div>
+
+  <div class="view-tabs" id="viewTabs">
+    <button class="view-tab" data-view="calendar">Calendar</button>
+    <button class="view-tab" data-view="notebook">Notebook</button>
   </div>
 
   <div class="notebook-section" id="notebookSection">
