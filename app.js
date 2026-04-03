@@ -405,6 +405,7 @@
           const recurringClass = note.isRecurring ? 'is-recurring' : '';
           const freqLabel = note.frequency === 'yearly' ? 'Repeats yearly' :
                             note.frequency === 'monthly' ? 'Repeats monthly' :
+                            note.frequency === 'biweekly' ? 'Repeats every 2 weeks' :
                             note.frequency === 'weekly' ? 'Repeats weekly' : 'Repeats daily';
           const recurringBadge = note.isRecurring ? `<span class="recurring-badge" title="${freqLabel}">&#x21bb;</span>` : '';
           const leadBadge = note.leadTime ? `<span class="lead-badge" title="Remind ${note.leadTime}min before">\u23f0-${note.leadTime >= 60 ? (note.leadTime/60) + 'h' : note.leadTime + 'm'}</span>` : '';
@@ -442,6 +443,7 @@
           <div class="recurring-options hidden" data-date="${key}">
             <button class="recurring-option" data-freq="daily" data-date="${key}">Daglig</button>
             <button class="recurring-option" data-freq="weekly" data-date="${key}">Ugentlig</button>
+            <button class="recurring-option" data-freq="biweekly" data-date="${key}">Hver 14. dag</button>
             <button class="recurring-option" data-freq="monthly" data-date="${key}">M\u00e5nedlig</button>
             <button class="recurring-option" data-freq="yearly" data-date="${key}">\u00c5rlig</button>
           </div>
@@ -716,6 +718,7 @@
       const prefixMap = {
         daily: 'mind mig hver dag om at ',
         weekly: 'mind mig hver uge om at ',
+        biweekly: 'mind mig hver 14. dag om at ',
         monthly: 'mind mig hver m\u00e5ned om at ',
         yearly: 'mind mig hvert \u00e5r om at '
       };
@@ -843,7 +846,7 @@
 
   // ---- Recurring detection ----
   // Matches English and Danish: "remind me every day", "mind mig hver dag", "birthday", "fødselsdag"
-  const recurringRegex = /(?:remind\s+me\s+|mind\s+mig\s+)?(?:every\s*day|everyday|daily|hver\s*dag|daglig|dagligt|every\s*week|weekly|hver\s*uge|ugentlig|ugentligt|(?:every|hver)\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|mandag|tirsdag|onsdag|torsdag|fredag|l[øo]rdag|s[øo]ndag)|every\s*month|monthly|hver\s*m[åa]ned|m[åa]nedlig|m[åa]nedligt|every\s*year|yearly|hvert?\s*[åa]r|[åa]rlig|[åa]rligt|birthday|f[øo]dselsdag)\s*(?:to\s+|om\s+at\s+|om\s+)?/i;
+  const recurringRegex = /(?:remind\s+me\s+|mind\s+mig\s+)?(?:every\s*day|everyday|daily|hver\s*dag|daglig|dagligt|every\s*(?:2|two|other)\s*weeks?|(?:bi-?weekly)|hver\s*(?:2\.?|anden)\s*uge|hver\s*14\.?\s*dag|every\s*14\s*days?|every\s*week|weekly|hver\s*uge|ugentlig|ugentligt|(?:every|hver)\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|mandag|tirsdag|onsdag|torsdag|fredag|l[øo]rdag|s[øo]ndag)|every\s*month|monthly|hver\s*m[åa]ned|m[åa]nedlig|m[åa]nedligt|every\s*year|yearly|hvert?\s*[åa]r|[åa]rlig|[åa]rligt|birthday|f[øo]dselsdag)\s*(?:to\s+|om\s+at\s+|om\s+)?/i;
 
   const DAY_NAME_MAP = {
     sunday: 0, sun: 0, 'søndag': 0, 'sondag': 0,
@@ -868,6 +871,9 @@
     if (/every\s*month|monthly|hver\s*m[åa]ned|m[åa]nedlig/i.test(lower)) {
       return { frequency: 'monthly', dayOfMonth: d.getDate() };
     }
+    if (/every\s*(?:2|two|other)\s*weeks?|bi-?weekly|hver\s*(?:2\.?|anden)\s*uge|hver\s*14\.?\s*dag|every\s*14\s*days?/i.test(lower)) {
+      return { frequency: 'biweekly', dayOfWeek: d.getDay() };
+    }
     const dayMatch = lower.match(/(?:every|hver)\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|mandag|tirsdag|onsdag|torsdag|fredag|l[øo]rdag|s[øo]ndag)/i);
     if (dayMatch) {
       const dayName = dayMatch[1].toLowerCase().replace('ø', 'o');
@@ -882,7 +888,7 @@
   function cleanRecurringText(text) {
     // Only strip command-style prefixes like "mind mig hver dag om at" / "remind me every week to"
     // Keep standalone keywords like "fødselsdag", "birthday", "daglig" etc. as part of the note text
-    const prefixRegex = /^(?:remind\s+me\s+|mind\s+mig\s+)(?:every\s*day|everyday|daily|hver\s*dag|daglig|dagligt|every\s*week|weekly|hver\s*uge|ugentlig|ugentligt|(?:every|hver)\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|mandag|tirsdag|onsdag|torsdag|fredag|l[øo]rdag|s[øo]ndag)|every\s*month|monthly|hver\s*m[åa]ned|m[åa]nedlig|m[åa]nedligt|every\s*year|yearly|hvert?\s*[åa]r|[åa]rlig|[åa]rligt|birthday|f[øo]dselsdag)\s*(?:to\s+|om\s+at\s+|om\s+)?/i;
+    const prefixRegex = /^(?:remind\s+me\s+|mind\s+mig\s+)(?:every\s*day|everyday|daily|hver\s*dag|daglig|dagligt|every\s*(?:2|two|other)\s*weeks?|(?:bi-?weekly)|hver\s*(?:2\.?|anden)\s*uge|hver\s*14\.?\s*dag|every\s*14\s*days?|every\s*week|weekly|hver\s*uge|ugentlig|ugentligt|(?:every|hver)\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|mandag|tirsdag|onsdag|torsdag|fredag|l[øo]rdag|s[øo]ndag)|every\s*month|monthly|hver\s*m[åa]ned|m[åa]nedlig|m[åa]nedligt|every\s*year|yearly|hvert?\s*[åa]r|[åa]rlig|[åa]rligt|birthday|f[øo]dselsdag)\s*(?:to\s+|om\s+at\s+|om\s+)?/i;
     const cleaned = text.replace(prefixRegex, '').trim();
     return cleaned || text.trim();
   }
@@ -900,6 +906,14 @@
 
         const freq = r.frequency || 'daily';
         if (freq === 'daily') return forDate === dateKey(new Date());
+        if (freq === 'biweekly') {
+          if (d.getDay() !== r.dayOfWeek) return false;
+          const start = parseDate(r.startDate);
+          const diffMs = d.getTime() - start.getTime();
+          const diffDays = Math.round(diffMs / 86400000);
+          const diffWeeks = Math.round(diffDays / 7);
+          return diffWeeks % 2 === 0;
+        }
         if (freq === 'weekly') return d.getDay() === r.dayOfWeek;
         if (freq === 'monthly') return d.getDate() === r.dayOfMonth;
         if (freq === 'yearly') return d.getMonth() === r.month && d.getDate() === r.dayOfMonth;
