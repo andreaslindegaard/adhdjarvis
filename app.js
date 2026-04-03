@@ -403,6 +403,7 @@
           const doneClass = note.done ? 'done' : '';
           const checked = note.done ? 'checked' : '';
           const recurringClass = note.isRecurring ? 'is-recurring' : '';
+          const eventClass = note.isEvent ? 'is-event' : '';
           const freqLabel = note.frequency === 'yearly' ? 'Repeats yearly' :
                             note.frequency === 'monthly' ? 'Repeats monthly' :
                             note.frequency === 'biweekly' ? 'Repeats every 2 weeks' :
@@ -411,8 +412,11 @@
           const leadBadge = note.leadTime ? `<span class="lead-badge" title="Remind ${note.leadTime}min before">\u23f0-${note.leadTime >= 60 ? (note.leadTime/60) + 'h' : note.leadTime + 'm'}</span>` : '';
           const recurringId = note.recurringId || '';
           const displayText = renderRichText(note.text);
-          html += `<div class="note-item ${doneClass} ${recurringClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
-            <input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
+          const checkboxHtml = note.isEvent
+            ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
+            : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">`;
+          html += `<div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
+            ${checkboxHtml}
             ${recurringBadge}
             <div class="note-text">${displayText}</div>
             <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}</span>
@@ -430,6 +434,7 @@
             <textarea placeholder="Write a note... (use #tags)" data-date="${key}" rows="1"></textarea>
             <button class="reminder-menu-btn" data-date="${key}" title="P\u00e5mindelse">&#x23f0;</button>
             <button class="recurring-menu-btn" data-date="${key}" title="Gentagelse">&#x21bb;</button>
+            <button class="task-toggle-btn" data-date="${key}" title="Opgave (med checkbox)">&#x2610; Task</button>
             <button data-date="${key}" class="save-note-btn">Add</button>
           </div>
           <div class="reminder-options hidden" data-date="${key}">
@@ -526,17 +531,19 @@
 
       const { id, date, recurringId } = noteItem.dataset;
 
-      // Get raw text and current leadTime
-      let rawText, currentLeadTime;
+      // Get raw text, current leadTime, and isEvent
+      let rawText, currentLeadTime, currentIsEvent;
       if (recurringId) {
         const rec = recurring.find(r => r.id === recurringId);
         rawText = rec ? rec.text : '';
         currentLeadTime = rec ? rec.leadTime : null;
+        currentIsEvent = rec ? (rec.isEvent ?? true) : true;
       } else {
         const dayNotes = notes[date] || [];
         const note = dayNotes.find(n => n.id === id);
         rawText = note ? note.text : '';
         currentLeadTime = note ? note.leadTime : null;
+        currentIsEvent = note ? (note.isEvent ?? true) : true;
       }
 
       // Build edit wrapper with textarea + reminder pills
@@ -569,8 +576,38 @@
         reminderRow.appendChild(btn);
       });
 
+      const typeRow = document.createElement('div');
+      typeRow.className = 'edit-reminder-row';
+      let selectedIsEvent = currentIsEvent;
+
+      const eventBtn = document.createElement('button');
+      eventBtn.className = 'reminder-option' + (currentIsEvent ? ' selected' : '');
+      eventBtn.textContent = '\u{1f4c5} Event';
+      eventBtn.type = 'button';
+      eventBtn.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        selectedIsEvent = true;
+        eventBtn.classList.add('selected');
+        taskBtn.classList.remove('selected');
+      });
+
+      const taskBtn = document.createElement('button');
+      taskBtn.className = 'reminder-option' + (!currentIsEvent ? ' selected' : '');
+      taskBtn.textContent = '\u2610 Task';
+      taskBtn.type = 'button';
+      taskBtn.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        selectedIsEvent = false;
+        taskBtn.classList.add('selected');
+        eventBtn.classList.remove('selected');
+      });
+
+      typeRow.appendChild(eventBtn);
+      typeRow.appendChild(taskBtn);
+
       editWrap.appendChild(textarea);
       editWrap.appendChild(reminderRow);
+      editWrap.appendChild(typeRow);
       noteText.replaceWith(editWrap);
       textarea.style.height = 'auto';
       textarea.style.height = textarea.scrollHeight + 'px';
@@ -593,6 +630,7 @@
             const { time } = parseTimeFromText(newText);
             if (time) rec.time = time;
             rec.leadTime = selectedLeadTime;
+            rec.isEvent = selectedIsEvent;
             saveRecurring();
           }
         } else {
@@ -603,6 +641,7 @@
             const { time } = parseTimeFromText(newText);
             if (time) note.time = time;
             note.leadTime = selectedLeadTime;
+            note.isEvent = selectedIsEvent;
             notes[date] = sortNotesByTime(notes[date]);
             saveNotes(notes);
           }
@@ -659,7 +698,8 @@
       const form = target.closest('.add-note-form');
       const textarea = form.querySelector('textarea');
       const uiLeadTime = form.dataset.leadTime ? parseInt(form.dataset.leadTime) : null;
-      addNote(date, textarea.value, uiLeadTime);
+      const isTask = form.dataset.isTask === '1';
+      addNote(date, textarea.value, uiLeadTime, !isTask);
       return;
     }
 
@@ -696,6 +736,14 @@
       target.classList.add('selected');
       options.classList.add('hidden');
       form.querySelector('textarea').focus();
+      return;
+    }
+
+    // Toggle task mode (default is event)
+    if (target.classList.contains('task-toggle-btn')) {
+      target.classList.toggle('active');
+      const form = target.closest('.add-note-form');
+      form.dataset.isTask = target.classList.contains('active') ? '1' : '';
       return;
     }
 
@@ -740,7 +788,8 @@
       e.preventDefault();
       const form = e.target.closest('.add-note-form');
       const uiLeadTime = form?.dataset.leadTime ? parseInt(form.dataset.leadTime) : null;
-      addNote(e.target.dataset.date, e.target.value, uiLeadTime);
+      const isTask = form?.dataset.isTask === '1';
+      addNote(e.target.dataset.date, e.target.value, uiLeadTime, !isTask);
     }
   });
 
@@ -927,7 +976,8 @@
         time: r.time || '',
         isRecurring: true,
         frequency: r.frequency || 'daily',
-        leadTime: r.leadTime ?? null
+        leadTime: r.leadTime ?? null,
+        isEvent: r.isEvent || false
       }));
   }
 
@@ -945,7 +995,7 @@
     return text.replace(/\s*\bremind\s+\d+\s*(min|mins|minutes|m|h|hrs|hours|hour)\b/i, '').trim();
   }
 
-  function addNote(date, text, uiLeadTime) {
+  function addNote(date, text, uiLeadTime, isEvent) {
     text = text.trim();
     if (!text) return;
 
@@ -967,7 +1017,8 @@
         dayOfWeek: freq.dayOfWeek,
         month: freq.month,
         dayOfMonth: freq.dayOfMonth,
-        leadTime: leadTime
+        leadTime: leadTime,
+        isEvent: isEvent || false
       });
       saveRecurring();
       render();
@@ -986,7 +1037,8 @@
       text,
       done: false,
       time: parsedTime || null,
-      leadTime: leadTime
+      leadTime: leadTime,
+      isEvent: isEvent || false
     });
 
     notes[date] = sortNotesByTime(notes[date]);

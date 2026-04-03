@@ -1027,6 +1027,49 @@
       border-left: 3px solid var(--accent);
     }
 
+    /* Event notes (no task/checkbox) */
+    .note-item.is-event {
+      background: linear-gradient(135deg, var(--accent-bg) 0%, var(--surface) 60%);
+      border-left: 3px solid var(--accent);
+    }
+
+    .note-item.is-event .note-text {
+      font-weight: 500;
+    }
+
+    .event-badge {
+      font-size: 0.78rem;
+      color: var(--accent);
+      flex-shrink: 0;
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    .task-toggle-btn {
+      background: var(--surface) !important;
+      color: var(--text-dim) !important;
+      border: 1.5px solid var(--border) !important;
+      padding: 6px 10px !important;
+      border-radius: var(--radius-sm) !important;
+      cursor: pointer;
+      font-size: 0.78rem !important;
+      transition: all 0.15s ease;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .task-toggle-btn:hover {
+      border-color: var(--accent) !important;
+      background: var(--accent-soft) !important;
+      color: var(--accent) !important;
+    }
+
+    .task-toggle-btn.active {
+      background: var(--accent-bg) !important;
+      border-color: var(--accent) !important;
+      color: var(--accent) !important;
+    }
+
     .recurring-badge {
       font-size: 0.9rem;
       color: var(--accent);
