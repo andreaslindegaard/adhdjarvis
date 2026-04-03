@@ -2121,24 +2121,34 @@
   });
 
   let savedCalendarScrollY = null;
+  let savedNotebookScrollY = null;
 
   document.getElementById('viewTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.view-tab');
     if (!tab) return;
+    const targetView = tab.dataset.view;
+    if (targetView === layoutState.activeTab) return;
 
-    if (layoutState.activeTab === 'calendar' && tab.dataset.view !== 'calendar') {
+    disableBootScroll();
+
+    if (layoutState.activeTab === 'calendar') {
       savedCalendarScrollY = window.scrollY;
+    } else if (layoutState.activeTab === 'notebook') {
+      savedNotebookScrollY = window.scrollY;
     }
 
-    layoutState.activeTab = tab.dataset.view;
+    layoutState.activeTab = targetView;
     saveLayout();
     applyLayout();
 
-    if (tab.dataset.view === 'calendar' && savedCalendarScrollY !== null) {
-      setTimeout(() => {
-        window.scrollTo(0, savedCalendarScrollY);
-        savedCalendarScrollY = null;
-      }, 10);
+    const restoreY = targetView === 'calendar' ? savedCalendarScrollY
+                   : targetView === 'notebook' ? savedNotebookScrollY
+                   : null;
+
+    if (restoreY !== null) {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, restoreY);
+      });
     }
   });
 
