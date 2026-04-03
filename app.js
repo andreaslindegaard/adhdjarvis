@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 17;
+  const SW_SCRIPT_VERSION = 18;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -439,6 +439,7 @@
           <button class="quick-action" data-date="${key}" data-qa="weekly">\u21bb Ugentlig</button>
           <button class="quick-action" data-date="${key}" data-qa="biweekly">\u21bb 14. dag</button>
           <button class="quick-action" data-date="${key}" data-qa="monthly">\u21bb M\u00e5nedlig</button>
+          <button class="quick-action quick-action-close" data-date="${key}" data-qa="close">&times;</button>
         </div>
         <button class="add-note-btn" data-date="${key}">+ Add note</button>
         <div class="add-note-form" data-date="${key}">
@@ -448,6 +449,7 @@
             <button class="recurring-menu-btn" data-date="${key}" title="Gentagelse">&#x21bb;</button>
             <button class="task-toggle-btn" data-date="${key}" title="Opgave (med checkbox)">&#x2610; Task</button>
             <button data-date="${key}" class="save-note-btn">Add</button>
+            <button data-date="${key}" class="cancel-note-btn">&times;</button>
           </div>
           <div class="reminder-options hidden" data-date="${key}">
             <button class="reminder-option" data-mins="0" data-date="${key}">Ingen</button>
@@ -709,6 +711,13 @@
     if (target.classList.contains('quick-action')) {
       const area = target.closest('.add-note-area');
       const qa = area.querySelector('.quick-actions');
+      const qaType = target.dataset.qa;
+
+      if (qaType === 'close') {
+        qa.classList.remove('visible');
+        return;
+      }
+
       const btn = area.querySelector('.add-note-btn');
       const form = area.querySelector('.add-note-form');
       const date = target.dataset.date;
@@ -717,7 +726,6 @@
       form.classList.add('active');
       const textarea = form.querySelector('textarea');
 
-      const qaType = target.dataset.qa;
       if (qaType === 'task') {
         form.dataset.isTask = '1';
         const taskBtn = form.querySelector('.task-toggle-btn');
@@ -745,6 +753,24 @@
       const form = target.nextElementSibling;
       form.classList.add('active');
       form.querySelector('textarea').focus();
+      return;
+    }
+
+    if (target.classList.contains('cancel-note-btn')) {
+      const area = target.closest('.add-note-area');
+      const form = area.querySelector('.add-note-form');
+      const btn = area.querySelector('.add-note-btn');
+      form.classList.remove('active');
+      form.querySelector('textarea').value = '';
+      form.querySelector('.reminder-options').classList.add('hidden');
+      form.querySelector('.recurring-options').classList.add('hidden');
+      delete form.dataset.leadTime;
+      delete form.dataset.isTask;
+      const taskBtn = form.querySelector('.task-toggle-btn');
+      if (taskBtn) taskBtn.classList.remove('active');
+      const reminderBtn = form.querySelector('.reminder-menu-btn');
+      if (reminderBtn) reminderBtn.classList.remove('active');
+      btn.classList.remove('hidden');
       return;
     }
 
@@ -932,6 +958,29 @@
       btn.addEventListener('touchmove', () => clearTimeout(pressTimer));
     });
   }
+
+  // Tap outside to dismiss quick actions and open add-note forms on mobile
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.quick-actions') || e.target.closest('.add-note-btn')) return;
+    doc.querySelectorAll('.quick-actions.visible').forEach(qa => {
+      qa.classList.remove('visible');
+    });
+  });
+
+  // Tap on note to reveal/hide actions on mobile
+  doc.addEventListener('click', (e) => {
+    if (window.innerWidth > 600) return;
+    const noteWrap = e.target.closest('.note-wrap');
+    if (e.target.closest('.note-actions')) return;
+
+    doc.querySelectorAll('.note-wrap.note-active').forEach(nw => {
+      if (nw !== noteWrap) nw.classList.remove('note-active');
+    });
+
+    if (noteWrap) {
+      noteWrap.classList.toggle('note-active');
+    }
+  });
 
   // ---- Time parsing ----
   function parseTimeFromText(text) {
@@ -2074,7 +2123,7 @@
     btn.textContent = 'Andreas';
     btn.title = 'Synced across all devices';
     btn.onclick = null;
-    status.textContent = '\u2601 Synced';
+    status.innerHTML = '\u2601<span class="sync-label"> Synced</span>';
     status.style.color = 'green';
   }
 
@@ -2163,7 +2212,11 @@
 
       startSyncListeners();
 
-      updateSyncStatusUI('\u2601 Synced', 'green');
+      const statusEl2 = document.getElementById('syncStatus');
+      if (statusEl2) {
+        statusEl2.innerHTML = '\u2601<span class="sync-label"> Synced</span>';
+        statusEl2.style.color = 'green';
+      }
     } catch (err) {
       console.error('Supabase init failed:', err);
       updateSyncStatusUI('Sync error', 'var(--accent)');

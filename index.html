@@ -623,6 +623,37 @@
 
     .add-note-form .save-note-btn:hover { background: var(--accent-hover); }
 
+    .cancel-note-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 1rem;
+      font-family: inherit;
+      line-height: 1;
+      transition: all 0.15s ease;
+    }
+
+    .cancel-note-btn:hover {
+      border-color: var(--text-dim);
+      color: var(--text-secondary);
+      background: var(--surface-hover);
+    }
+
+    .quick-action-close {
+      background: var(--surface) !important;
+      color: var(--text-dim) !important;
+      border-color: var(--border) !important;
+      font-size: 1rem;
+      padding: 4px 12px;
+    }
+
+    .quick-action-close:hover {
+      color: var(--accent) !important;
+    }
+
     .reminder-menu-btn, .recurring-menu-btn {
       background: var(--surface) !important;
       color: var(--accent) !important;
@@ -815,7 +846,16 @@
         gap: 8px;
       }
       .topbar h1 { font-size: 1rem; }
-      .topbar-actions { gap: 6px; }
+      .topbar-actions { gap: 6px; align-items: center; }
+      .sync-label { display: none; }
+
+      .topbar-actions button {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+      }
 
       .search-box { display: none; }
       .cal-picker-btn { display: none !important; }
@@ -823,13 +863,10 @@
 
       .mobile-search-toggle {
         display: flex !important;
-        align-items: center;
-        justify-content: center;
         background: var(--surface);
         color: var(--text-secondary);
         border: 1px solid var(--border);
         width: 34px;
-        height: 34px;
         border-radius: var(--radius-sm);
         cursor: pointer;
         box-shadow: var(--shadow-sm);
@@ -846,13 +883,13 @@
       }
 
       .today-btn {
-        padding: 6px 12px !important;
+        padding: 0 12px !important;
         font-size: 0.78rem !important;
       }
 
       .more-menu-btn {
         width: 34px;
-        height: 34px;
+        padding: 0 !important;
       }
 
       /* --- Document --- */
@@ -868,16 +905,24 @@
         padding: 12px 0 12px 16px;
       }
 
-      /* --- Note actions: touch-friendly --- */
+      /* --- Note actions: tap to reveal --- */
+      .note-wrap {
+        flex-wrap: wrap;
+      }
       .note-actions {
+        display: none;
         flex-direction: row;
-        opacity: 0.6;
-        padding-top: 0;
-        gap: 6px;
-        align-self: center;
+        gap: 8px;
+        padding: 6px 0 0;
+        width: 100%;
+        order: 3;
+      }
+      .note-wrap.note-active .note-actions {
+        display: flex;
+        opacity: 1;
       }
       .note-edit, .note-delete {
-        min-width: 36px;
+        min-width: 40px;
         min-height: 36px;
         display: flex;
         align-items: center;
@@ -886,6 +931,7 @@
         padding: 0;
         border-radius: var(--radius-sm);
         background: var(--surface-hover);
+        border: 1px solid var(--border-light);
       }
       .link-delete { opacity: 0.5; padding: 2px 6px; }
 
@@ -919,6 +965,11 @@
         min-height: 40px;
         padding: 8px 16px;
         flex: 1;
+      }
+      .cancel-note-btn {
+        min-height: 40px;
+        padding: 8px 14px;
+        font-size: 1.1rem;
       }
 
       .reminder-options,
@@ -1880,14 +1931,11 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="5.5" y1="2.5" x2="5.5" y2="0.5"/><line x1="10.5" y1="2.5" x2="10.5" y2="0.5"/><rect x="4" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="10" y="8" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="4" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/><rect x="7" y="11" width="2" height="1.5" rx="0.3" fill="currentColor" stroke="none"/></svg>
       </button>
       <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
-      <button id="mobileSearchToggle" class="mobile-search-toggle" title="Search">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6.5" cy="6.5" r="4.5"/><line x1="10" y1="10" x2="14" y2="14"/></svg>
-      </button>
+      <button id="mobileSearchToggle" class="mobile-search-toggle" title="Search"><svg style="display:block;width:22px;height:22px;min-width:22px;min-height:22px" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/></svg></button>
       <div class="more-menu-wrap">
         <button id="moreMenuBtn" class="more-menu-btn" title="Mere">&#x22ef;</button>
         <div class="more-menu hidden" id="moreMenu">
           <button id="mobileCalPickerBtn" class="mobile-only-menu-item">Month calendar</button>
-          <button id="mobileViewToggleBtn" class="mobile-only-menu-item">Switch view</button>
           <button id="exportBtn">Export</button>
           <button id="importBtn">Import</button>
           <button id="smartLinksBtn">Smart Links</button>
@@ -2033,7 +2081,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=1"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=30"></script>
 
 </body>
 </html>
