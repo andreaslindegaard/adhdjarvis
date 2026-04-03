@@ -453,6 +453,15 @@
       display: flex;
       gap: 4px;
       flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .edit-row-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-right: 4px;
+      white-space: nowrap;
     }
 
     .note-item:hover .note-delete { opacity: 0.6; }
@@ -1071,11 +1080,10 @@
     }
 
     .recurring-badge {
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       color: var(--accent);
-      margin-top: 1px;
-      flex-shrink: 0;
-      line-height: 1;
+      cursor: default;
+      vertical-align: middle;
     }
 
     .lead-badge {

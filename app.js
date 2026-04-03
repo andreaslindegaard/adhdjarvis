@@ -404,11 +404,11 @@
           const checked = note.done ? 'checked' : '';
           const recurringClass = note.isRecurring ? 'is-recurring' : '';
           const eventClass = note.isEvent ? 'is-event' : '';
-          const freqLabel = note.frequency === 'yearly' ? 'Repeats yearly' :
-                            note.frequency === 'monthly' ? 'Repeats monthly' :
-                            note.frequency === 'biweekly' ? 'Repeats every 2 weeks' :
-                            note.frequency === 'weekly' ? 'Repeats weekly' : 'Repeats daily';
-          const recurringBadge = note.isRecurring ? `<span class="recurring-badge" title="${freqLabel}">&#x21bb;</span>` : '';
+          const freqText = note.frequency === 'yearly' ? '\u00c5rlig' :
+                           note.frequency === 'monthly' ? 'M\u00e5nedlig' :
+                           note.frequency === 'biweekly' ? 'Hver 14. dag' :
+                           note.frequency === 'weekly' ? 'Ugentlig' : 'Daglig';
+          const recurringBadge = note.isRecurring ? `<span class="recurring-badge" title="${freqText}">&#x21bb;</span>` : '';
           const leadBadge = note.leadTime ? `<span class="lead-badge" title="Remind ${note.leadTime}min before">\u23f0-${note.leadTime >= 60 ? (note.leadTime/60) + 'h' : note.leadTime + 'm'}</span>` : '';
           const recurringId = note.recurringId || '';
           const displayText = renderRichText(note.text);
@@ -417,9 +417,8 @@
             : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">`;
           html += `<div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
             ${checkboxHtml}
-            ${recurringBadge}
             <div class="note-text">${displayText}</div>
-            <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}</span>
+            <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
             <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
             <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">&times;</button>
           </div>`;
@@ -557,6 +556,10 @@
 
       const reminderRow = document.createElement('div');
       reminderRow.className = 'edit-reminder-row';
+      const reminderLabel = document.createElement('span');
+      reminderLabel.className = 'edit-row-label';
+      reminderLabel.textContent = 'P\u00e5mindelse:';
+      reminderRow.appendChild(reminderLabel);
       let selectedLeadTime = currentLeadTime;
       const options = [
         [0, 'Ingen'], [5, '5 min'], [15, '15 min'],
@@ -568,7 +571,7 @@
         btn.textContent = label;
         btn.type = 'button';
         btn.addEventListener('mousedown', (ev) => {
-          ev.preventDefault(); // prevent blur
+          ev.preventDefault();
           selectedLeadTime = mins === 0 ? null : mins;
           reminderRow.querySelectorAll('.reminder-option').forEach(b => b.classList.remove('selected'));
           btn.classList.add('selected');
@@ -578,6 +581,10 @@
 
       const typeRow = document.createElement('div');
       typeRow.className = 'edit-reminder-row';
+      const typeLabel = document.createElement('span');
+      typeLabel.className = 'edit-row-label';
+      typeLabel.textContent = 'Type:';
+      typeRow.appendChild(typeLabel);
       let selectedIsEvent = currentIsEvent;
 
       const eventBtn = document.createElement('button');
