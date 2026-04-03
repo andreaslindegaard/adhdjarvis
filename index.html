@@ -275,6 +275,19 @@
     .day-block.is-today .day-date { color: var(--accent); }
     .day-block.is-today .day-weekday { color: var(--accent); }
 
+    .day-block.is-holiday { opacity: 1; }
+    .day-block.is-holiday::before { background: var(--accent-bg); border: 1.5px solid var(--accent); }
+
+    .day-holiday {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.2px;
+      background: var(--accent-bg);
+      padding: 1px 8px;
+      border-radius: 10px;
+    }
+
     .day-label {
       display: inline-block;
       background: var(--accent);

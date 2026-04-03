@@ -139,6 +139,79 @@
     return day === 0 || day === 6;
   }
 
+  // ---- Danish holidays (helligdage) ----
+  function computeEaster(year) {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  }
+
+  const holidayCache = {};
+
+  function getDanishHolidays(year) {
+    if (holidayCache[year]) return holidayCache[year];
+
+    const holidays = {};
+    const easter = computeEaster(year);
+
+    function addDays(date, days) {
+      const d = new Date(date);
+      d.setDate(d.getDate() + days);
+      return d;
+    }
+
+    function add(date, name) {
+      holidays[dateKey(date)] = name;
+    }
+
+    // Fixed holidays
+    add(new Date(year, 0, 1), 'Nytårsdag');
+    add(new Date(year, 5, 5), 'Grundlovsdag / Fars dag');
+    add(new Date(year, 11, 24), 'Juleaften');
+    add(new Date(year, 11, 25), '1. juledag');
+    add(new Date(year, 11, 26), '2. juledag');
+    add(new Date(year, 11, 31), 'Nytårsaften');
+
+    // Movable holidays (Easter-based)
+    add(addDays(easter, -49), 'Fastelavn');
+    add(addDays(easter, -3), 'Skærtorsdag');
+    add(addDays(easter, -2), 'Langfredag');
+    add(easter, 'Påskedag');
+    add(addDays(easter, 1), '2. påskedag');
+    if (year <= 2023) {
+      add(addDays(easter, 26), 'Store bededag');
+    }
+    add(addDays(easter, 39), 'Kr. himmelfartsdag');
+    add(addDays(easter, 49), 'Pinsedag');
+    add(addDays(easter, 50), '2. pinsedag');
+
+    // Mors dag: 2. søndag i maj
+    const mayFirst = new Date(year, 4, 1);
+    const morsDag = new Date(year, 4, (7 - mayFirst.getDay()) % 7 + 8);
+    add(morsDag, 'Mors dag');
+
+    holidayCache[year] = holidays;
+    return holidays;
+  }
+
+  function getHolidayName(key) {
+    const year = parseInt(key.split('-')[0]);
+    const holidays = getDanishHolidays(year);
+    return holidays[key] || null;
+  }
+
   function getDateRange() {
     const today = new Date();
     let start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -299,12 +372,15 @@
       const todayClass = isToday(key) ? 'is-today' : '';
       const weekendClass = isWeekend(d) ? 'is-weekend' : '';
       const hasNotesClass = dayNotes.length > 0 ? 'has-notes' : '';
+      const holidayName = getHolidayName(key);
+      const holidayClass = holidayName ? 'is-holiday' : '';
 
-      html += `<div class="day-block ${todayClass} ${weekendClass} ${hasNotesClass}" id="day-${key}" data-date="${key}">`;
+      html += `<div class="day-block ${todayClass} ${weekendClass} ${hasNotesClass} ${holidayClass}" id="day-${key}" data-date="${key}">`;
       html += `<div class="day-header">`;
       html += `<span class="day-date">${d.getDate()}</span>`;
       html += `<span class="day-weekday">${WEEKDAYS[d.getDay()]}</span>`;
       if (isToday(key)) html += `<span class="day-label">Today</span>`;
+      if (holidayName) html += `<span class="day-holiday">${holidayName}</span>`;
       html += `</div>`;
 
       if (matchingNotes.length > 0) {
