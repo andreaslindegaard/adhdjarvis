@@ -25,22 +25,16 @@
     bootScrollToToday = false;
   }, 4000);
 
-  // ---- Firebase config ----
-  // Replace with your Firebase project config from Firebase Console > Project Settings
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyACgcv2sYCdxTAVyHChXLQXBw7lN3ZU2XA",
-    authDomain: "adhd-jarvis.firebaseapp.com",
-    projectId: "adhd-jarvis",
-    storageBucket: "adhd-jarvis.firebasestorage.app",
-    messagingSenderId: "124691330992",
-    appId: "1:124691330992:web:43a340ff1795f7f8a48875",
-    measurementId: "G-MX2Y06HNRV"
+  // ---- Supabase (publishable key + RLS on planner_data) ----
+  const SUPABASE_CONFIG = {
+    url: 'https://wavyqvbsaoahbulkunbq.supabase.co',
+    key: 'sb_publishable_qs8Q-O3K-7Bn538WRHwEqA_dAHDuYZs'
   };
 
-  // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js for SW/shell releases; bump ?v= on script tags in index.html when app.js or firebase-sync.js changes.
-  const SW_SCRIPT_VERSION = 16;
+  // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
+  const SW_SCRIPT_VERSION = 17;
 
-  let firebaseReady = false;
+  let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
 
   // ---- Data layer ----
@@ -56,7 +50,7 @@
 
   function saveNotes(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if (firebaseReady) FirebaseSync.save('notes', data);
+    if (syncReady) SupabaseSync.save('notes', data);
   }
 
   function loadRecurring() {
@@ -67,7 +61,7 @@
 
   function saveRecurring() {
     localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
-    if (firebaseReady) FirebaseSync.save('recurring', recurring);
+    if (syncReady) SupabaseSync.save('recurring', recurring);
   }
 
   // ---- Smart Links: keyword -> auto-attach URL ----
@@ -79,7 +73,7 @@
 
   function saveSmartLinks() {
     localStorage.setItem(SMARTLINKS_KEY, JSON.stringify(smartLinks));
-    if (firebaseReady) FirebaseSync.save('smartLinks', smartLinks);
+    if (syncReady) SupabaseSync.save('smartLinks', smartLinks);
   }
 
   const defaultSmartLinks = [
@@ -1190,7 +1184,7 @@
 
   function saveNotebook() {
     localStorage.setItem(NB_STORAGE_KEY, JSON.stringify(notebook));
-    if (firebaseReady) FirebaseSync.save('notebook', notebook);
+    if (syncReady) SupabaseSync.save('notebook', notebook);
   }
 
   let notebook = loadNotebook();
@@ -1438,7 +1432,7 @@
 
   function saveNotifSettings(s) {
     localStorage.setItem(NOTIF_KEY, JSON.stringify(s));
-    if (firebaseReady) FirebaseSync.save('notifSettings', s);
+    if (syncReady) SupabaseSync.save('notifSettings', s);
   }
 
   function getNotifSent() {
@@ -1731,7 +1725,7 @@
   const nbResizeObserver = new ResizeObserver(() => updateStickyOffsets());
   nbResizeObserver.observe(document.getElementById('notebookSection'));
 
-  // ---- Firebase Sync Integration ----
+  // ---- Supabase sync ----
   function updateSyncStatusUI(text, color) {
     const el = document.getElementById('syncStatus');
     if (el) {
@@ -1769,19 +1763,19 @@
       return false;
     }
 
-    syncListeners.push(FirebaseSync.listen('notes', (remote) => {
+    syncListeners.push(SupabaseSync.listen('notes', (remote) => {
       notes = remote;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
       if (!isUserEditing()) render();
     }));
 
-    syncListeners.push(FirebaseSync.listen('recurring', (remote) => {
+    syncListeners.push(SupabaseSync.listen('recurring', (remote) => {
       recurring = remote;
       localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
       if (!isUserEditing()) render();
     }));
 
-    syncListeners.push(FirebaseSync.listen('notebook', (remote) => {
+    syncListeners.push(SupabaseSync.listen('notebook', (remote) => {
       notebook = remote;
       if (!notebook.activePageId && notebook.pages?.length) {
         notebook.activePageId = notebook.pages[0].id;
@@ -1790,40 +1784,44 @@
       if (!isUserEditing()) renderNotebook();
     }));
 
-    syncListeners.push(FirebaseSync.listen('smartLinks', (remote) => {
+    syncListeners.push(SupabaseSync.listen('smartLinks', (remote) => {
       smartLinks = remote;
       localStorage.setItem(SMARTLINKS_KEY, JSON.stringify(smartLinks));
     }));
 
-    syncListeners.push(FirebaseSync.listen('notifSettings', (remote) => {
+    syncListeners.push(SupabaseSync.listen('notifSettings', (remote) => {
       localStorage.setItem(NOTIF_KEY, JSON.stringify(remote));
     }));
   }
 
-  async function initFirebase() {
-    // Check if Firebase SDK is loaded and config is set
-    if (typeof firebase === 'undefined' || FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') {
-      console.log('Firebase not configured \u2014 running in local-only mode');
+  async function initCloudSync() {
+    if (typeof window.supabase === 'undefined' || typeof SupabaseSync === 'undefined') {
+      console.log('Supabase not loaded \u2014 running in local-only mode');
       const statusEl = document.getElementById('syncStatus');
       if (statusEl) statusEl.textContent = 'Local only';
       const btn = document.getElementById('syncBtn');
       if (btn) {
         btn.textContent = 'Setup sync';
-        btn.title = 'Configure Firebase to enable cross-device sync';
+        btn.title = 'Load Supabase scripts and set SUPABASE_CONFIG in app.js';
         btn.onclick = () => {
-          alert('To enable sync:\n\n1. Create a Firebase project at console.firebase.google.com\n2. Enable Authentication (Anonymous + Google)\n3. Create a Firestore database\n4. Copy your config into app.js (FIREBASE_CONFIG)\n5. Reload the page');
+          alert('Add the Supabase JS script and supabase-sync.js to index.html, and set SUPABASE_CONFIG (url + publishable key) in app.js. Create table planner_data in Supabase SQL Editor.');
         };
       }
       return;
     }
+    if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.key || SUPABASE_CONFIG.key === 'YOUR_SUPABASE_PUBLISHABLE_KEY') {
+      console.log('Supabase not configured \u2014 running in local-only mode');
+      const statusEl = document.getElementById('syncStatus');
+      if (statusEl) statusEl.textContent = 'Local only';
+      return;
+    }
 
     try {
-      await FirebaseSync.init(FIREBASE_CONFIG);
-      firebaseReady = true;
+      await SupabaseSync.init(SUPABASE_CONFIG);
+      syncReady = true;
       updateAuthUI();
 
-      // Migrate existing localStorage data to Firestore (only if Firestore is empty)
-      await FirebaseSync.migrateFromLocalStorage({
+      await SupabaseSync.migrateFromLocalStorage({
         notes,
         recurring,
         notebook,
@@ -1831,12 +1829,11 @@
         notifSettings: loadNotifSettings()
       });
 
-      // Start listening for remote changes
       startSyncListeners();
 
       updateSyncStatusUI('\u2601 Synced', 'green');
     } catch (err) {
-      console.error('Firebase init failed:', err);
+      console.error('Supabase init failed:', err);
       updateSyncStatusUI('Sync error', 'var(--accent)');
     }
   }
@@ -1857,7 +1854,6 @@
   renderNotebook();
   setTimeout(updateStickyOffsets, 50);
 
-  // Boot Firebase and service worker
   registerServiceWorker();
-  initFirebase();
+  initCloudSync();
 })();
