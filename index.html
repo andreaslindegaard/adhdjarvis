@@ -342,6 +342,7 @@
       padding-top: 8px;
       opacity: 0;
       transition: opacity 0.15s ease;
+      min-width: 22px;
     }
 
     .note-wrap:hover .note-actions {
@@ -496,6 +497,8 @@
     /* Add note area */
     .add-note-area {
       margin-top: 6px;
+      position: relative;
+      margin-right: 26px;
     }
 
     .add-note-btn {
@@ -514,6 +517,62 @@
     }
 
     .add-note-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .quick-actions {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 50;
+      gap: 4px;
+      flex-wrap: wrap;
+      animation: quickActionsIn 0.12s ease-out;
+    }
+
+    @keyframes quickActionsIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .quick-actions.visible {
+      display: flex;
+    }
+
+    .quick-actions-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      width: 100%;
+      padding: 2px 4px 0;
+    }
+
+    .quick-action {
+      background: var(--bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-light);
+      padding: 4px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.73rem;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+    }
+
+    .quick-action:hover {
       border-color: var(--accent);
       color: var(--accent);
       background: var(--accent-soft);

@@ -431,6 +431,15 @@
       }
 
       html += `<div class="add-note-area">
+        <div class="quick-actions" data-date="${key}">
+          <span class="quick-actions-label">Hurtig tilf\u00f8j</span>
+          <button class="quick-action" data-date="${key}" data-qa="task">\u2610 Task</button>
+          <button class="quick-action" data-date="${key}" data-qa="event">\u{1f4c5} Event</button>
+          <button class="quick-action" data-date="${key}" data-qa="daily">\u21bb Daglig</button>
+          <button class="quick-action" data-date="${key}" data-qa="weekly">\u21bb Ugentlig</button>
+          <button class="quick-action" data-date="${key}" data-qa="biweekly">\u21bb 14. dag</button>
+          <button class="quick-action" data-date="${key}" data-qa="monthly">\u21bb M\u00e5nedlig</button>
+        </div>
         <button class="add-note-btn" data-date="${key}">+ Add note</button>
         <div class="add-note-form" data-date="${key}">
           <div class="form-row">
@@ -697,7 +706,41 @@
       return;
     }
 
+    if (target.classList.contains('quick-action')) {
+      const area = target.closest('.add-note-area');
+      const qa = area.querySelector('.quick-actions');
+      const btn = area.querySelector('.add-note-btn');
+      const form = area.querySelector('.add-note-form');
+      const date = target.dataset.date;
+      qa.classList.remove('visible');
+      btn.classList.add('hidden');
+      form.classList.add('active');
+      const textarea = form.querySelector('textarea');
+
+      const qaType = target.dataset.qa;
+      if (qaType === 'task') {
+        form.dataset.isTask = '1';
+        const taskBtn = form.querySelector('.task-toggle-btn');
+        if (taskBtn) taskBtn.classList.add('active');
+      }
+      if (['daily','weekly','biweekly','monthly','yearly'].includes(qaType)) {
+        const prefixMap = {
+          daily: 'mind mig hver dag om at ',
+          weekly: 'mind mig hver uge om at ',
+          biweekly: 'mind mig hver 14. dag om at ',
+          monthly: 'mind mig hver m\u00e5ned om at ',
+          yearly: 'mind mig hvert \u00e5r om at '
+        };
+        textarea.value = prefixMap[qaType];
+      }
+      textarea.focus();
+      return;
+    }
+
     if (target.classList.contains('add-note-btn')) {
+      const area = target.closest('.add-note-area');
+      const qa = area.querySelector('.quick-actions');
+      qa.classList.remove('visible');
       target.classList.add('hidden');
       const form = target.nextElementSibling;
       form.classList.add('active');
@@ -858,7 +901,36 @@
   });
 
   function bindEvents() {
-    // All events handled via delegation above
+    // Hover to show quick actions on desktop
+    doc.querySelectorAll('.add-note-btn').forEach(btn => {
+      let hoverTimeout;
+      const area = btn.closest('.add-note-area');
+      const qa = area.querySelector('.quick-actions');
+
+      btn.addEventListener('mouseenter', () => {
+        hoverTimeout = setTimeout(() => {
+          qa.classList.add('visible');
+        }, 400);
+      });
+      btn.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimeout);
+      });
+      area.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimeout);
+        qa.classList.remove('visible');
+      });
+
+      // Long-press for mobile
+      let pressTimer;
+      btn.addEventListener('touchstart', (e) => {
+        pressTimer = setTimeout(() => {
+          e.preventDefault();
+          qa.classList.add('visible');
+        }, 500);
+      }, { passive: false });
+      btn.addEventListener('touchend', () => clearTimeout(pressTimer));
+      btn.addEventListener('touchmove', () => clearTimeout(pressTimer));
+    });
   }
 
   // ---- Time parsing ----
