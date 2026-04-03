@@ -2016,12 +2016,26 @@
     applyLayout();
   });
 
+  let savedCalendarScrollY = null;
+
   document.getElementById('viewTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.view-tab');
     if (!tab) return;
+
+    if (layoutState.activeTab === 'calendar' && tab.dataset.view !== 'calendar') {
+      savedCalendarScrollY = window.scrollY;
+    }
+
     layoutState.activeTab = tab.dataset.view;
     saveLayout();
     applyLayout();
+
+    if (tab.dataset.view === 'calendar' && savedCalendarScrollY !== null) {
+      setTimeout(() => {
+        window.scrollTo(0, savedCalendarScrollY);
+        savedCalendarScrollY = null;
+      }, 10);
+    }
   });
 
   // ---- Initial render ----
