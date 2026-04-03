@@ -180,8 +180,8 @@
     add(new Date(year, 0, 1), 'Nytårsdag');
     add(new Date(year, 5, 5), 'Grundlovsdag / Fars dag');
     add(new Date(year, 11, 24), 'Juleaften');
-    add(new Date(year, 11, 25), '1. juledag');
-    add(new Date(year, 11, 26), '2. juledag');
+    add(new Date(year, 11, 25), '1. Juledag');
+    add(new Date(year, 11, 26), '2. Juledag');
     add(new Date(year, 11, 31), 'Nytårsaften');
 
     // Movable holidays (Easter-based)
@@ -189,13 +189,13 @@
     add(addDays(easter, -3), 'Skærtorsdag');
     add(addDays(easter, -2), 'Langfredag');
     add(easter, 'Påskedag');
-    add(addDays(easter, 1), '2. påskedag');
+    add(addDays(easter, 1), '2. Påskedag');
     if (year <= 2023) {
-      add(addDays(easter, 26), 'Store bededag');
+      add(addDays(easter, 26), 'Store Bededag');
     }
-    add(addDays(easter, 39), 'Kr. himmelfartsdag');
+    add(addDays(easter, 39), 'Kr. Himmelfartsdag');
     add(addDays(easter, 49), 'Pinsedag');
-    add(addDays(easter, 50), '2. pinsedag');
+    add(addDays(easter, 50), '2. Pinsedag');
 
     // Mors dag: 2. søndag i maj
     const mayFirst = new Date(year, 4, 1);
