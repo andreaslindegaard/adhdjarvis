@@ -309,6 +309,12 @@
       margin-top: 4px;
     }
 
+    .note-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
     .note-item {
       background: var(--note-bg);
       border: 1px solid var(--border-light);
@@ -320,11 +326,26 @@
       transition: all 0.15s ease;
       position: relative;
       box-shadow: var(--shadow-sm);
+      flex: 1;
+      min-width: 0;
     }
 
     .note-item:hover {
       box-shadow: var(--shadow-md);
       border-color: var(--border);
+    }
+
+    .note-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-top: 8px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .note-wrap:hover .note-actions {
+      opacity: 0.6;
     }
 
     .note-item.done { opacity: 0.55; }
@@ -398,32 +419,27 @@
     }
 
     .note-delete {
-      opacity: 0;
       background: none;
       border: none;
       color: var(--text-dim);
       cursor: pointer;
-      font-size: 1.1rem;
-      padding: 0 4px;
+      font-size: 1rem;
+      padding: 0 3px;
       transition: all 0.15s ease;
-      margin-top: 0px;
       line-height: 1;
     }
 
     .note-edit {
-      opacity: 0;
       background: none;
       border: none;
       color: var(--text-dim);
       cursor: pointer;
-      font-size: 0.85rem;
-      padding: 0 2px;
+      font-size: 0.8rem;
+      padding: 0 3px;
       transition: all 0.15s ease;
-      margin-top: 1px;
       line-height: 1;
     }
 
-    .note-item:hover .note-edit { opacity: 0.6; }
     .note-edit:hover { color: var(--accent); opacity: 1 !important; }
 
     .note-edit-wrap {
@@ -464,7 +480,6 @@
       white-space: nowrap;
     }
 
-    .note-item:hover .note-delete { opacity: 0.6; }
     .note-delete:hover { color: var(--accent); opacity: 1 !important; }
 
     .note-tag {
@@ -651,11 +666,11 @@
     }
 
     /* Weekend styling */
-    .day-block.is-weekend {
+    .day-block.is-weekend .day-header {
       opacity: 0.7;
     }
 
-    .day-block.is-weekend.is-holiday {
+    .day-block.is-weekend.is-holiday .day-header {
       opacity: 1;
     }
 
@@ -689,7 +704,8 @@
       .document { padding: 20px 14px 200px; }
       .search-box { width: 130px; }
       .month-header h2 { font-size: 1.2rem; }
-      .note-edit, .note-delete { opacity: 0.5; padding: 4px 8px; font-size: 1rem; }
+      .note-actions { opacity: 0.5; }
+      .note-edit, .note-delete { padding: 4px 8px; font-size: 1rem; }
       .link-delete { opacity: 0.5; padding: 2px 6px; }
     }
 
@@ -1047,11 +1063,11 @@
     }
 
     .event-badge {
-      font-size: 0.78rem;
+      font-size: 0.82rem;
       color: var(--accent);
       flex-shrink: 0;
-      line-height: 1;
-      margin-top: 2px;
+      line-height: 1.55;
+      margin-top: 0;
     }
 
     .task-toggle-btn {

@@ -415,12 +415,16 @@
           const checkboxHtml = note.isEvent
             ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
             : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">`;
-          html += `<div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
-            ${checkboxHtml}
-            <div class="note-text">${displayText}</div>
-            <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
-            <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
-            <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">&times;</button>
+          html += `<div class="note-wrap" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
+            <div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
+              ${checkboxHtml}
+              <div class="note-text">${displayText}</div>
+              <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
+            </div>
+            <div class="note-actions">
+              <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">&times;</button>
+              <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
+            </div>
           </div>`;
         }
         html += `</div>`;
@@ -521,7 +525,8 @@
 
     // Edit via pencil button or clicking note text
     if (target.classList.contains('note-edit') || target.classList.contains('note-text')) {
-      const noteItem = target.closest('.note-item');
+      const noteWrap = target.closest('.note-wrap');
+      const noteItem = noteWrap ? noteWrap.querySelector('.note-item') : target.closest('.note-item');
       if (!noteItem) return;
       const noteText = noteItem.querySelector('.note-text');
 
