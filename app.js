@@ -1002,10 +1002,16 @@
     return text.replace(/\s*\bremind\s+\d+\s*(min|mins|minutes|m|h|hrs|hours|hour)\b/i, '').trim();
   }
 
+  function capitalizeFirst(s) {
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
   function addNote(date, text, uiLeadTime, isEvent) {
     text = text.trim();
     if (!text) return;
 
+    text = capitalizeFirst(text);
     text = applySmartLinks(text);
 
     if (isRecurringRequest(text)) {
