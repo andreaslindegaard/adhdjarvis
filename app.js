@@ -954,7 +954,7 @@
         if (r.doneDate === forDate) return false;
 
         const freq = r.frequency || 'daily';
-        if (freq === 'daily') return forDate === dateKey(new Date());
+        if (freq === 'daily') return forDate === dateKey(new Date()) || forDate === r.startDate;
         if (freq === 'biweekly') {
           if (d.getDay() !== r.dayOfWeek) return false;
           const start = parseDate(r.startDate);
