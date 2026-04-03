@@ -1381,7 +1381,7 @@
   const notebookAddBtn = document.getElementById('notebookAddBtn');
 
   function migrateMarkdownToHtml(text) {
-    if (!text || text.includes('<') && (text.includes('<strong>') || text.includes('<li>') || text.includes('<br'))) {
+    if (!text || /<[a-z/]/i.test(text)) {
       return text;
     }
     const lines = text.split('\n');
@@ -1393,6 +1393,30 @@
     }
     return result.join('<br>');
   }
+
+  function repairCorruptedHtml(html) {
+    if (!html || !html.includes('&amp;')) return html;
+    const el = document.createElement('div');
+    let prev = html;
+    for (let i = 0; i < 20; i++) {
+      el.innerHTML = prev;
+      const decoded = el.innerHTML;
+      if (decoded === prev) break;
+      prev = decoded;
+    }
+    return prev;
+  }
+
+  (function repairNotebookPages() {
+    let changed = false;
+    for (const page of notebook.pages) {
+      if (page.content && page.content.includes('&amp;amp;')) {
+        page.content = repairCorruptedHtml(page.content);
+        changed = true;
+      }
+    }
+    if (changed) saveNotebook();
+  })();
 
   function getActivePage() {
     return notebook.pages.find(p => p.id === notebook.activePageId) || notebook.pages[0];
