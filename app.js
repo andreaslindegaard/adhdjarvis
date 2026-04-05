@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 20;
+  const SW_SCRIPT_VERSION = 33;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -114,7 +114,7 @@
   // notes structure: { "2026-03-29": [ { id, text, done, time } ] }
   let notes = loadNotes();
 
-  // recurring structure: [ { id, text, time, startDate, doneDate } ]
+  // recurring structure: [ { id, text, time, startDate, doneDate } ] — checking off removes the rule (no repeat)
   let recurring = loadRecurring();
 
   // ---- Date helpers ----
@@ -488,7 +488,7 @@
         <button class="add-note-btn" data-date="${key}">+ Add note</button>
         <div class="add-note-form" data-date="${key}">
           <div class="form-row">
-            <textarea placeholder="Write a note... (use #tags)" data-date="${key}" rows="1"></textarea>
+            <textarea placeholder="Write a note... (use #tags)" data-date="${key}" rows="1" spellcheck="false"></textarea>
             <button class="reminder-menu-btn" data-date="${key}" title="P\u00e5mindelse">&#x23f0;</button>
             <button class="recurring-menu-btn" data-date="${key}" title="Gentagelse">&#x21bb;</button>
             <button class="task-toggle-btn" data-date="${key}" title="Opgave (med checkbox)">&#x2610; Task</button>
@@ -591,7 +591,7 @@
         const rec = recurring.find(r => r.id === recurringId);
         if (rec) {
           if (target.checked) {
-            rec.doneDate = date;
+            recurring = recurring.filter(r => r.id !== recurringId);
           } else {
             rec.doneDate = null;
           }
@@ -634,6 +634,7 @@
 
           const titleInput = document.createElement('input');
           titleInput.type = 'text';
+          titleInput.spellcheck = false;
           titleInput.className = 'smart-list-edit-title';
           titleInput.placeholder = 'Title (optional)';
           titleInput.value = slNote.text || '';
@@ -643,6 +644,7 @@
           itemsLabel.textContent = 'Items (one per line)';
 
           const itemsTa = document.createElement('textarea');
+          itemsTa.spellcheck = false;
           itemsTa.className = 'note-edit-input smart-list-edit-items';
           itemsTa.rows = Math.max(3, (slNote.listItems || []).length || 1);
           itemsTa.value = (slNote.listItems || []).map(li => li.text || '').join('\n');
@@ -708,29 +710,47 @@
         currentIsEvent = note ? (note.isEvent ?? true) : true;
       }
 
-      // Build edit wrapper with textarea + reminder pills
+      // Build edit wrapper: textarea + compact option bar (accordion-style panels)
       const editWrap = document.createElement('div');
       editWrap.className = 'note-edit-wrap';
 
       const textarea = document.createElement('textarea');
       textarea.className = 'note-edit-input';
+      textarea.spellcheck = false;
       textarea.value = rawText;
       textarea.rows = 1;
 
-      const reminderRow = document.createElement('div');
-      reminderRow.className = 'edit-reminder-row';
-      const reminderLabel = document.createElement('span');
-      reminderLabel.className = 'edit-row-label';
-      reminderLabel.textContent = 'P\u00e5mindelse:';
-      reminderRow.appendChild(reminderLabel);
       let selectedLeadTime = currentLeadTime;
-      const options = [
+      const leadOptions = [
         [0, 'Ingen'], [5, '5 min'], [15, '15 min'],
         [30, '30 min'], [60, '1 time'], [1440, '1 dag']
       ];
-      options.forEach(([mins, label]) => {
+
+      let selectedIsEvent = currentIsEvent;
+
+      const prefixMap = {
+        daily: 'mind mig hver dag om at ',
+        weekly: 'mind mig hver uge om at ',
+        biweekly: 'mind mig hver 14. dag om at ',
+        monthly: 'mind mig hver m\u00e5ned om at ',
+        yearly: 'mind mig hvert \u00e5r om at '
+      };
+
+      let selectedRepeat = null;
+      const repeatChoices = [
+        [null, 'Ingen'],
+        ['daily', 'Daglig'],
+        ['weekly', 'Ugentlig'],
+        ['biweekly', 'Hver 14. dag'],
+        ['monthly', 'M\u00e5nedlig'],
+        ['yearly', '\u00c5rlig']
+      ];
+
+      const reminderRow = document.createElement('div');
+      reminderRow.className = 'edit-reminder-row';
+      leadOptions.forEach(([mins, label]) => {
         const btn = document.createElement('button');
-        btn.className = 'reminder-option' + ((mins === 0 && !currentLeadTime) || mins === currentLeadTime ? ' selected' : '');
+        btn.className = 'reminder-option' + ((mins === 0 && (currentLeadTime == null || currentLeadTime === undefined)) || mins === currentLeadTime ? ' selected' : '');
         btn.textContent = label;
         btn.type = 'button';
         btn.addEventListener('mousedown', (ev) => {
@@ -738,18 +758,14 @@
           selectedLeadTime = mins === 0 ? null : mins;
           reminderRow.querySelectorAll('.reminder-option').forEach(b => b.classList.remove('selected'));
           btn.classList.add('selected');
+          refreshReminderSummary();
+          closeEditPanels();
         });
         reminderRow.appendChild(btn);
       });
 
       const typeRow = document.createElement('div');
       typeRow.className = 'edit-reminder-row';
-      const typeLabel = document.createElement('span');
-      typeLabel.className = 'edit-row-label';
-      typeLabel.textContent = 'Type:';
-      typeRow.appendChild(typeLabel);
-      let selectedIsEvent = currentIsEvent;
-
       const eventBtn = document.createElement('button');
       eventBtn.className = 'reminder-option' + (currentIsEvent ? ' selected' : '');
       eventBtn.textContent = '\u{1f4c5} Event';
@@ -759,6 +775,8 @@
         selectedIsEvent = true;
         eventBtn.classList.add('selected');
         taskBtn.classList.remove('selected');
+        refreshTypeSummary();
+        closeEditPanels();
       });
 
       const taskBtn = document.createElement('button');
@@ -770,14 +788,133 @@
         selectedIsEvent = false;
         taskBtn.classList.add('selected');
         eventBtn.classList.remove('selected');
+        refreshTypeSummary();
+        closeEditPanels();
       });
 
       typeRow.appendChild(eventBtn);
       typeRow.appendChild(taskBtn);
 
+      let repeatRow = null;
+      if (!recurringId) {
+        repeatRow = document.createElement('div');
+        repeatRow.className = 'edit-reminder-row edit-repeat-row';
+        repeatChoices.forEach(([freq, label]) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'reminder-option edit-repeat-option' + (freq === null ? ' selected' : '');
+          btn.textContent = label;
+          btn.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            selectedRepeat = freq;
+            repeatRow.querySelectorAll('.edit-repeat-option').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            refreshRepeatSummary();
+            closeEditPanels();
+          });
+          repeatRow.appendChild(btn);
+        });
+      }
+
+      const optsBar = document.createElement('div');
+      optsBar.className = 'edit-opts-bar';
+      const panelsWrap = document.createElement('div');
+      panelsWrap.className = 'edit-opts-panels';
+
+      let openEditPanel = null;
+      function setOpenEditPanel(id) {
+        openEditPanel = id;
+        panelsWrap.querySelectorAll('.edit-opts-panel').forEach(p => {
+          const pid = p.dataset.editPanel;
+          p.classList.toggle('is-open', id !== null && pid === id);
+        });
+        optsBar.querySelectorAll('.edit-opts-trigger').forEach(t => {
+          t.classList.toggle('is-open', id !== null && t.dataset.editPanel === id);
+        });
+      }
+      function closeEditPanels() {
+        setOpenEditPanel(null);
+      }
+
+      function makeTrigger(title, panelId) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'edit-opts-trigger';
+        b.dataset.editPanel = panelId;
+        const t = document.createElement('span');
+        t.className = 'edit-opts-trigger-title';
+        t.textContent = title;
+        const s = document.createElement('span');
+        s.className = 'edit-opts-summary';
+        b.appendChild(t);
+        b.appendChild(s);
+        b.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          const next = openEditPanel === panelId ? null : panelId;
+          setOpenEditPanel(next);
+        });
+        return { btn: b, summary: s };
+      }
+
+      const remTrig = makeTrigger('P\u00e5mindelse', 'reminder');
+      const typeTrig = makeTrigger('Type', 'type');
+      let repTrig = null;
+
+      function refreshReminderSummary() {
+        const found = leadOptions.find(([m]) =>
+          (m === 0 && (selectedLeadTime == null || selectedLeadTime === undefined)) || m === selectedLeadTime
+        );
+        remTrig.summary.textContent = found ? found[1] : 'Ingen';
+      }
+
+      function refreshTypeSummary() {
+        typeTrig.summary.textContent = selectedIsEvent ? 'Begivenhed' : 'Opgave';
+      }
+
+      function refreshRepeatSummary() {
+        if (!repTrig) return;
+        const found = repeatChoices.find(([f]) =>
+          (f === null && selectedRepeat == null) || f === selectedRepeat
+        );
+        repTrig.summary.textContent = found ? found[1] : 'Ingen';
+      }
+
+      refreshReminderSummary();
+      refreshTypeSummary();
+
+      optsBar.appendChild(remTrig.btn);
+      optsBar.appendChild(typeTrig.btn);
+
+      if (!recurringId) {
+        repTrig = makeTrigger('Gentagelse', 'repeat');
+        refreshRepeatSummary();
+        optsBar.appendChild(repTrig.btn);
+      }
+
+      const panelReminder = document.createElement('div');
+      panelReminder.className = 'edit-opts-panel';
+      panelReminder.dataset.editPanel = 'reminder';
+      panelReminder.appendChild(reminderRow);
+
+      const panelType = document.createElement('div');
+      panelType.className = 'edit-opts-panel';
+      panelType.dataset.editPanel = 'type';
+      panelType.appendChild(typeRow);
+
+      panelsWrap.appendChild(panelReminder);
+      panelsWrap.appendChild(panelType);
+
+      if (repeatRow) {
+        const panelRepeat = document.createElement('div');
+        panelRepeat.className = 'edit-opts-panel';
+        panelRepeat.dataset.editPanel = 'repeat';
+        panelRepeat.appendChild(repeatRow);
+        panelsWrap.appendChild(panelRepeat);
+      }
+
       editWrap.appendChild(textarea);
-      editWrap.appendChild(reminderRow);
-      editWrap.appendChild(typeRow);
+      editWrap.appendChild(optsBar);
+      editWrap.appendChild(panelsWrap);
       noteText.replaceWith(editWrap);
       textarea.style.height = 'auto';
       textarea.style.height = textarea.scrollHeight + 'px';
@@ -803,6 +940,46 @@
             rec.isEvent = selectedIsEvent;
             saveRecurring();
           }
+        } else if (selectedRepeat) {
+          const dayNotes = notes[date] || [];
+          const note = dayNotes.find(n => n.id === id);
+          if (!note) {
+            render();
+            return;
+          }
+          let t = capitalizeFirst(newText.trim());
+          t = applySmartLinks(t);
+          if (!recurringRegex.test(t)) {
+            t = prefixMap[selectedRepeat] + t;
+          }
+          const freq = isRecurringRequest(t)
+            ? parseRecurringFrequency(t, date)
+            : freqFromRepeatChoice(selectedRepeat, date);
+          const rawForClean = isRecurringRequest(t)
+            ? t
+            : (prefixMap[selectedRepeat] + capitalizeFirst(newText.trim()));
+          const fullForTime = isRecurringRequest(t) ? t : applySmartLinks(rawForClean);
+          let cleanText = applySmartLinks(cleanRecurringText(rawForClean));
+          const { time: parsedTime } = parseTimeFromText(fullForTime);
+          const leadTime = selectedLeadTime ?? parseLeadTime(fullForTime) ?? null;
+          if (leadTime !== null) cleanText = cleanLeadTimeText(cleanText);
+          recurring.push({
+            id: crypto.randomUUID(),
+            text: cleanText || cleanRecurringText(rawForClean) || newText,
+            time: parsedTime || note.time || null,
+            startDate: date,
+            doneDate: null,
+            frequency: freq.frequency,
+            dayOfWeek: freq.dayOfWeek,
+            month: freq.month,
+            dayOfMonth: freq.dayOfMonth,
+            leadTime: leadTime ?? null,
+            isEvent: selectedIsEvent
+          });
+          notes[date] = (notes[date] || []).filter(n => n.id !== id);
+          if (notes[date].length === 0) delete notes[date];
+          saveRecurring();
+          saveNotes(notes);
         } else {
           const dayNotes = notes[date] || [];
           const note = dayNotes.find(n => n.id === id);
@@ -825,13 +1002,17 @@
           saveEdit();
         }
         if (ev.key === 'Escape') {
+          if (openEditPanel) {
+            closeEditPanels();
+            ev.preventDefault();
+            return;
+          }
           render(); // cancel
         }
       });
       textarea.addEventListener('blur', (ev) => {
-        // Don't trigger blur-save if clicking a reminder pill
-        if (ev.relatedTarget && ev.relatedTarget.closest('.edit-reminder-row')) return;
-        saveEdit();
+        if (ev.relatedTarget && editWrap.contains(ev.relatedTarget)) return;
+        setTimeout(() => saveEdit(), 0);
       });
       textarea.addEventListener('input', () => {
         textarea.style.height = 'auto';
@@ -1200,11 +1381,30 @@
     return { time: `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}` };
   }
 
+  function hasNoteTime(note) {
+    return !!(note.time && String(note.time).trim());
+  }
+
+  /** Day order: all-day events → timed events → timed tasks → tasks without time */
   function sortNotesByTime(dayNotes) {
+    function rank(note) {
+      const isEv = note.isEvent === true;
+      const t = hasNoteTime(note);
+      if (isEv && !t) return 0;
+      if (isEv && t) return 1;
+      if (!isEv && t) return 2;
+      return 3;
+    }
     return [...dayNotes].sort((a, b) => {
-      const timeA = a.time || '99:99';
-      const timeB = b.time || '99:99';
-      return timeA.localeCompare(timeB);
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      const ta = hasNoteTime(a) ? a.time : null;
+      const tb = hasNoteTime(b) ? b.time : null;
+      if (ta && tb) return ta.localeCompare(tb);
+      const textA = (a.text || '').slice(0, 80);
+      const textB = (b.text || '').slice(0, 80);
+      return textA.localeCompare(textB, 'da');
     });
   }
 
@@ -1247,6 +1447,18 @@
       return { frequency: 'weekly', dayOfWeek: d.getDay() };
     }
     return { frequency: 'daily' };
+  }
+
+  function freqFromRepeatChoice(choice, dateKey) {
+    const d = parseDate(dateKey);
+    switch (choice) {
+      case 'daily': return { frequency: 'daily' };
+      case 'weekly': return { frequency: 'weekly', dayOfWeek: d.getDay() };
+      case 'biweekly': return { frequency: 'biweekly', dayOfWeek: d.getDay() };
+      case 'monthly': return { frequency: 'monthly', dayOfMonth: d.getDate() };
+      case 'yearly': return { frequency: 'yearly', month: d.getMonth(), dayOfMonth: d.getDate() };
+      default: return { frequency: 'daily' };
+    }
   }
 
   function cleanRecurringText(text) {
@@ -1630,18 +1842,21 @@
   const moreMenuBtn = document.getElementById('moreMenuBtn');
   const moreMenu = document.getElementById('moreMenu');
   if (moreMenuBtn && moreMenu) {
+    function setMoreMenuOpen(open) {
+      moreMenu.classList.toggle('hidden', !open);
+      moreMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
     moreMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      moreMenu.classList.toggle('hidden');
+      setMoreMenuOpen(moreMenu.classList.contains('hidden'));
     });
     document.addEventListener('click', (e) => {
       if (!moreMenu.contains(e.target) && e.target !== moreMenuBtn) {
-        moreMenu.classList.add('hidden');
+        setMoreMenuOpen(false);
       }
     });
-    // Close menu when any menu button is clicked
     moreMenu.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', () => moreMenu.classList.add('hidden'));
+      btn.addEventListener('click', () => setMoreMenuOpen(false));
     });
   }
 
@@ -2393,6 +2608,13 @@
   // ---- Notifications engine ----
   const NOTIF_KEY = 'endless-planner-notif-settings';
   const NOTIF_SENT_KEY = 'endless-planner-notif-sent';
+  const MORNING_BRIEF_SENT_LS = 'endless-planner-morning-brief-sent-date';
+  let morningBriefSentDate = null;
+  try {
+    morningBriefSentDate = localStorage.getItem(MORNING_BRIEF_SENT_LS);
+  } catch (_) {
+    morningBriefSentDate = null;
+  }
 
   const DEFAULT_NOTIF_SETTINGS = {
     browserEnabled: true,
@@ -2401,7 +2623,8 @@
     telegramChatId: '8493934471',
     leadTime: 15,
     morningBriefing: true,
-    morningTime: '06:30'
+    morningTime: '06:30',
+    timeZone: ''
   };
 
   function loadNotifSettings() {
@@ -2420,6 +2643,17 @@
   function saveNotifSettings(s) {
     localStorage.setItem(NOTIF_KEY, JSON.stringify(s));
     if (syncReady) SupabaseSync.save('notifSettings', s);
+  }
+
+  function ensureNotifTimeZone() {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const s = loadNotifSettings();
+      if (!s.timeZone || s.timeZone !== tz) {
+        s.timeZone = tz;
+        saveNotifSettings(s);
+      }
+    } catch (_) {}
   }
 
   function getNotifSent() {
@@ -2495,15 +2729,18 @@
 
       const diffMs = now.getTime() - alertTime.getTime();
       if (diffMs >= 0 && diffMs < 60000) {
-        const prefix = noteLeadMinutes > 0 ? `In ${noteLeadMinutes} min` : 'Now';
         const cleanText = note.text.replace(/https?:\/\/[^\s]+/g, '').trim();
-        const message = `\u23f0 ${prefix}: ${cleanText}`;
+        const when =
+          noteLeadMinutes > 0
+            ? `in ${noteLeadMinutes} minute${noteLeadMinutes !== 1 ? 's' : ''}`
+            : 'now';
+        const message = `Sir — ${when}: ${cleanText}`;
 
         if (s.browserEnabled) {
-          sendBrowserNotification('ADHD Jarvis', message);
+          sendBrowserNotification('Jarvis', message);
         }
         if (s.telegramEnabled) {
-          sendTelegramMessage(`<b>\u23f0 ${prefix}</b>\n${cleanText}`);
+          sendTelegramMessage(`<b>Sir</b> &mdash; ${when}: ${cleanText}`);
         }
 
         markNotifSent(uniqueId);
@@ -2546,7 +2783,7 @@
       }
       for (const li of items) {
         const cleanText = (li.text || '').replace(/https?:\/\/[^\s]+/g, '').trim();
-        lines.push(`  \u2610 ${cleanText}`);
+        lines.push(`  - ${cleanText}`);
       }
       todoBlocks.push(lines.join('\n'));
     }
@@ -2561,7 +2798,7 @@
       }
       for (const li of items) {
         const cleanText = (li.text || '').replace(/https?:\/\/[^\s]+/g, '').trim();
-        lines.push(`  \u2610 ${cleanText}`);
+        lines.push(`  - ${cleanText}`);
       }
       shopBlocks.push(lines.join('\n'));
     }
@@ -2571,38 +2808,38 @@
 
     if (allNotes.length === 0 && !hasTodo && !hasShop) return null;
 
-    let msg = `<b>\u2600\ufe0f Good morning! Here's your ${dayName}</b>\n`;
-    msg += `<i>${monthName} ${dayNum}</i>\n\n`;
+    let msg = `<b>Good morning, sir.</b>\n`;
+    msg += `<i>Your ${dayName} briefing &mdash; ${monthName} ${dayNum}</i>\n\n`;
 
     const timed = allNotes.filter(n => n.time);
     const untimed = allNotes.filter(n => !n.time);
 
     if (timed.length > 0) {
-      msg += `<b>\ud83d\udcc5 Schedule:</b>\n`;
+      msg += `<b>Today\u2019s schedule</b>\n`;
       for (const n of timed) {
         const cleanText = n.text.replace(/https?:\/\/[^\s]+/g, '').trim();
-        const icon = n.isRecurring ? '\ud83d\udd01' : '\u25b8';
-        msg += `  ${icon} <b>${n.time}</b> \u2014 ${cleanText}\n`;
+        const recur = n.isRecurring ? ' <i>(recurring)</i>' : '';
+        msg += `  \u2022 <b>${n.time}</b> \u2014 ${cleanText}${recur}\n`;
       }
       msg += '\n';
     }
 
     if (untimed.length > 0) {
-      msg += `<b>\ud83d\udcdd Also today:</b>\n`;
+      msg += `<b>Also on your list for today</b>\n`;
       for (const n of untimed) {
         const cleanText = n.text.replace(/https?:\/\/[^\s]+/g, '').trim();
-        const icon = n.isRecurring ? '\ud83d\udd01' : '\u25b8';
-        msg += `  ${icon} ${cleanText}\n`;
+        const recur = n.isRecurring ? ' <i>(recurring)</i>' : '';
+        msg += `  \u2022 ${cleanText}${recur}\n`;
       }
       msg += '\n';
     }
 
     if (hasTodo) {
-      msg += `<b>\ud83d\udccb To-do</b>\n`;
+      msg += `<b>To-do lists</b>\n`;
       msg += `${todoBlocks.join('\n\n')}\n\n`;
     }
     if (hasShop) {
-      msg += `<b>\ud83d\uded2 Shopping</b>\n`;
+      msg += `<b>Shopping</b>\n`;
       msg += `${shopBlocks.join('\n\n')}\n\n`;
     }
 
@@ -2614,7 +2851,7 @@
       smartItemCount += (n.listItems || []).filter(li => !li.done && (li.text || '').trim()).length;
     }
     const totalCount = allNotes.length + smartItemCount;
-    msg += `<i>${totalCount} thing${totalCount !== 1 ? 's' : ''} on your plate. You got this \ud83d\udcaa</i>`;
+    msg += `<i>That is ${totalCount} item${totalCount !== 1 ? 's' : ''} on your programme, sir.</i>`;
     return msg;
   }
 
@@ -2625,8 +2862,15 @@
 
     const now = new Date();
     const todayKey = dateKey(now);
-    const sent = getNotifSent();
 
+    if (morningBriefSentDate === todayKey) {
+      const briefingId = `morning-briefing-${todayKey}`;
+      const sent2 = getNotifSent();
+      if (!sent2.ids.includes(briefingId)) markNotifSent(briefingId);
+      return;
+    }
+
+    const sent = getNotifSent();
     const briefingId = `morning-briefing-${todayKey}`;
     if (sent.ids.includes(briefingId)) return;
 
@@ -2640,14 +2884,16 @@
       if (msgHtml) {
         const plain = briefingHtmlToPlain(msgHtml);
         if (s.telegramEnabled) sendTelegramMessage(msgHtml);
-        if (s.browserEnabled) sendBrowserNotification('ADHD Jarvis', plain);
+        if (s.browserEnabled) sendBrowserNotification('Jarvis', plain);
         markNotifSent(briefingId);
       } else {
         const dayName = WEEKDAYS[now.getDay()];
-        const fallbackHtml = `<b>\u2600\ufe0f Good morning!</b>\nNothing scheduled for ${dayName}. Enjoy your free day! \ud83c\udf89`;
+        const fallbackHtml =
+          `<b>Good morning, sir.</b>\n` +
+          `Nothing appears on your calendar for ${dayName}. Your day is at your discretion.`;
         const fallbackPlain = briefingHtmlToPlain(fallbackHtml);
         if (s.telegramEnabled) sendTelegramMessage(fallbackHtml);
-        if (s.browserEnabled) sendBrowserNotification('ADHD Jarvis', fallbackPlain);
+        if (s.browserEnabled) sendBrowserNotification('Jarvis', fallbackPlain);
         markNotifSent(briefingId);
       }
     }
@@ -2700,7 +2946,10 @@
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: '\u2705 ADHD Jarvis connected! You will receive reminders here.' })
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: 'At your service, sir. I shall deliver your reminders here.'
+        })
       });
       const data = await res.json();
       if (data.ok) {
@@ -2716,7 +2965,7 @@
     }
   });
 
-  document.getElementById('notifModalSave').addEventListener('click', () => {
+    document.getElementById('notifModalSave').addEventListener('click', () => {
     const s = {
       browserEnabled: document.getElementById('browserNotifToggle').checked,
       telegramEnabled: document.getElementById('telegramNotifToggle').checked,
@@ -2724,7 +2973,10 @@
       telegramChatId: document.getElementById('telegramChatId').value.trim(),
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
-      morningTime: document.getElementById('morningBriefingTime').value || '06:30'
+      morningTime: document.getElementById('morningBriefingTime').value || '06:30',
+      timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : ''
     };
     saveNotifSettings(s);
     document.getElementById('notifModalOverlay').classList.remove('active');
@@ -2859,7 +3111,24 @@
     }));
 
     syncListeners.push(SupabaseSync.listen('notifSettings', (remote) => {
-      localStorage.setItem(NOTIF_KEY, JSON.stringify(remote));
+      const merged = remote && typeof remote === 'object' ? { ...remote } : {};
+      let tz = '';
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch (_) {}
+      const hadTimeZone = !!(merged.timeZone && String(merged.timeZone).trim());
+      if (!hadTimeZone && tz) merged.timeZone = tz;
+      localStorage.setItem(NOTIF_KEY, JSON.stringify(merged));
+      if (syncReady && !hadTimeZone && tz) saveNotifSettings(merged);
+    }));
+
+    syncListeners.push(SupabaseSync.listen('morningBriefSent', (remote) => {
+      if (remote && typeof remote === 'object' && remote.date) {
+        morningBriefSentDate = remote.date;
+        try {
+          localStorage.setItem(MORNING_BRIEF_SENT_LS, remote.date);
+        } catch (_) {}
+      }
     }));
   }
 
@@ -2977,6 +3246,14 @@
   let savedCalendarScrollY = null;
   let savedNotebookScrollY = null;
 
+  const CAL_SCROLL_SS_KEY = 'adhd-planner-cal-scroll-y';
+  const NB_SCROLL_SS_KEY = 'adhd-planner-nb-scroll-y';
+
+  function clampWindowScrollY(y) {
+    const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    return Math.max(0, Math.min(Number(y), max));
+  }
+
   document.getElementById('viewTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.view-tab');
     if (!tab) return;
@@ -2987,22 +3264,48 @@
 
     if (layoutState.activeTab === 'calendar') {
       savedCalendarScrollY = window.scrollY;
+      try { sessionStorage.setItem(CAL_SCROLL_SS_KEY, String(savedCalendarScrollY)); } catch (_) {}
     } else if (layoutState.activeTab === 'notebook') {
       savedNotebookScrollY = window.scrollY;
+      try { sessionStorage.setItem(NB_SCROLL_SS_KEY, String(savedNotebookScrollY)); } catch (_) {}
     }
 
     layoutState.activeTab = targetView;
     saveLayout();
     applyLayout();
 
-    const restoreY = targetView === 'calendar' ? savedCalendarScrollY
-                   : targetView === 'notebook' ? savedNotebookScrollY
-                   : null;
-
-    if (restoreY !== null) {
+    if (targetView === 'calendar') {
+      let y = savedCalendarScrollY;
+      if (y == null) {
+        try {
+          const parsed = parseFloat(sessionStorage.getItem(CAL_SCROLL_SS_KEY));
+          if (!isNaN(parsed)) y = parsed;
+        } catch (_) {}
+      }
       requestAnimationFrame(() => {
-        window.scrollTo(0, restoreY);
+        requestAnimationFrame(() => {
+          if (y != null && !isNaN(y)) {
+            window.scrollTo(0, clampWindowScrollY(y));
+          } else {
+            setTimeout(() => scrollCalendarToToday('auto'), 40);
+          }
+        });
       });
+    } else if (targetView === 'notebook') {
+      let y = savedNotebookScrollY;
+      if (y == null) {
+        try {
+          const parsed = parseFloat(sessionStorage.getItem(NB_SCROLL_SS_KEY));
+          if (!isNaN(parsed)) y = parsed;
+        } catch (_) {}
+      }
+      if (y != null && !isNaN(y)) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo(0, clampWindowScrollY(y));
+          });
+        });
+      }
     }
   });
 
@@ -3253,5 +3556,6 @@
   setTimeout(updateStickyOffsets, 50);
 
   registerServiceWorker();
+  ensureNotifTimeZone();
   initCloudSync();
 })();

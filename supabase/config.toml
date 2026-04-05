@@ -1,0 +1,5 @@
+# https://supabase.com/docs/guides/cli/config
+# Edge Functions: deploy with `supabase functions deploy morning-brief`
+
+[functions.morning-brief]
+verify_jwt = false

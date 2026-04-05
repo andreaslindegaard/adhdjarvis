@@ -41,6 +41,8 @@
       /* Notebook: soft surfaces (not stark white) */
       --notebook-paper: #f0e9e2;
       --notebook-sidebar: #e9e2da;
+      /* Task cards: gradient distinct from event (accent-peach) */
+      --task-gradient-start: #e6ebe4;
     }
 
     body {
@@ -121,10 +123,18 @@
     }
 
     .more-menu-btn {
-      font-size: 1.1rem !important;
-      padding: 4px 10px !important;
-      letter-spacing: 1px;
-      line-height: 1;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 34px !important;
+      min-width: 34px;
+      padding: 6px !important;
+      color: var(--text-secondary);
+    }
+
+    .more-menu-btn svg {
+      display: block;
+      flex-shrink: 0;
     }
 
     .more-menu {
@@ -630,6 +640,77 @@
       white-space: nowrap;
     }
 
+    .edit-opts-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: stretch;
+    }
+
+    .edit-opts-trigger {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .edit-opts-trigger:hover {
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+
+    .edit-opts-trigger.is-open {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+    }
+
+    .edit-opts-trigger .edit-opts-trigger-title {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .edit-opts-trigger .edit-opts-summary {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .edit-opts-panels {
+      margin-top: 4px;
+    }
+
+    .edit-opts-panel {
+      display: none;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-warm);
+      border: 1px solid var(--border-light);
+    }
+
+    .edit-opts-panel.is-open {
+      display: block;
+    }
+
+    .edit-opts-panel .edit-reminder-row {
+      margin: 0;
+    }
+
     .note-delete:hover { color: var(--accent); opacity: 1 !important; }
 
     .note-tag {
@@ -1038,8 +1119,9 @@
       }
 
       .more-menu-btn {
-        width: 34px;
-        padding: 0 !important;
+        width: 34px !important;
+        min-width: 34px;
+        padding: 6px !important;
       }
 
       /* --- Document --- */
@@ -1253,6 +1335,12 @@
       /* --- Edit note inline --- */
       .edit-reminder-row {
         gap: 6px;
+      }
+      .edit-opts-bar {
+        flex-direction: column;
+      }
+      .edit-opts-trigger {
+        width: 100%;
       }
       .note-edit-input {
         min-height: 44px;
@@ -1647,7 +1735,7 @@
       border-left: 3px solid var(--accent);
     }
 
-    /* Event notes (no task/checkbox) */
+    /* Event notes (no task/checkbox) — keep prominent “card” look */
     .note-item.is-event {
       background: linear-gradient(135deg, var(--accent-bg) 0%, var(--surface) 60%);
       border-left: 3px solid var(--accent);
@@ -1655,6 +1743,44 @@
 
     .note-item.is-event .note-text {
       font-weight: 500;
+    }
+
+    /* Tasks (not events): soft sage gradient — same idea as events, different hue */
+    .note-item:not(.is-event) {
+      background: linear-gradient(135deg, var(--task-gradient-start) 0%, var(--surface) 58%);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm);
+      padding: 8px 12px;
+    }
+
+    .note-item:not(.is-event) .note-text {
+      font-weight: 400;
+      font-size: 0.87rem;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .note-item:not(.is-event) .note-checkbox {
+      border-color: var(--border);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .note-item.is-recurring:not(.is-event):not(.smart-list-note) {
+      border-left: 2px solid color-mix(in srgb, #7d8f78 55%, var(--border));
+    }
+
+    .note-item.smart-list-note:not(.is-event) {
+      border: 1px solid var(--border-light);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .note-item.smart-list-todo:not(.is-event) {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent-bg) 35%, var(--task-gradient-start)) 0%, var(--surface) 58%);
+    }
+
+    .note-item.smart-list-shopping:not(.is-event) {
+      background: linear-gradient(135deg, color-mix(in srgb, #3d8b6e 14%, var(--task-gradient-start)) 0%, var(--surface) 58%);
     }
 
     .event-badge {
@@ -2448,13 +2574,15 @@
       <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
       <button id="mobileSearchToggle" class="mobile-search-toggle" title="Search"><svg style="display:block;width:22px;height:22px;min-width:22px;min-height:22px" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/></svg></button>
       <div class="more-menu-wrap">
-        <button id="moreMenuBtn" class="more-menu-btn" title="Mere">&#x22ef;</button>
-        <div class="more-menu hidden" id="moreMenu">
-          <button id="mobileCalPickerBtn" class="mobile-only-menu-item">Month calendar</button>
-          <button id="exportBtn">Export</button>
-          <button id="importBtn">Import</button>
-          <button id="smartLinksBtn">Smart Links</button>
-          <button id="notificationsBtn">Notifications</button>
+        <button type="button" id="moreMenuBtn" class="more-menu-btn" title="Settings" aria-label="Settings" aria-haspopup="true" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        </button>
+        <div class="more-menu hidden" id="moreMenu" role="menu" aria-label="Settings menu">
+          <button id="mobileCalPickerBtn" class="mobile-only-menu-item" role="menuitem">Month calendar</button>
+          <button id="exportBtn" role="menuitem">Export</button>
+          <button id="importBtn" role="menuitem">Import</button>
+          <button id="smartLinksBtn" role="menuitem">Smart Links</button>
+          <button id="notificationsBtn" role="menuitem">Jarvis preferences</button>
         </div>
       </div>
     </div>
@@ -2509,8 +2637,8 @@
             <button data-cmd="insertOrderedList" title="Numbered list (Ctrl+Shift+7)"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><text x="0.5" y="4.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">1</text><rect x="5.5" y="2" width="9.5" height="2" rx="0.5"/><text x="0.5" y="9.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">2</text><rect x="5.5" y="7" width="9.5" height="2" rx="0.5"/><text x="0.5" y="14.8" font-size="5" font-weight="700" font-family="system-ui,sans-serif">3</text><rect x="5.5" y="12" width="9.5" height="2" rx="0.5"/></svg></button>
           </div>
           <div class="notebook-edit-stack">
-            <input type="text" class="notebook-title-input" id="notebookTitle" placeholder="Title" autocomplete="off">
-            <div class="notebook-editor" id="notebookEditor" contenteditable="true" data-placeholder="Write anything here... thoughts, reminders, things you want to remember."></div>
+            <input type="text" class="notebook-title-input" id="notebookTitle" placeholder="Title" autocomplete="off" spellcheck="false">
+            <div class="notebook-editor" id="notebookEditor" contenteditable="true" spellcheck="false" data-placeholder="Write anything here... thoughts, reminders, things you want to remember."></div>
           </div>
           <div class="notebook-meta">
             <span id="notebookCharCount">0 characters</span>
@@ -2537,9 +2665,9 @@
 
   <div class="modal-overlay" id="notifModalOverlay">
     <div class="modal" style="max-width: 480px;">
-      <h3>Notifications</h3>
+      <h3>Jarvis preferences</h3>
       <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">
-        Get alerted when a note's time is due. Browser notifications work while this tab is open. Telegram sends to your phone.
+        Jarvis can notify you when a note&rsquo;s time is due. Browser notifications require this tab to be open; Telegram delivers to your phone regardless.
       </p>
 
       <div style="display:flex; flex-direction:column; gap:14px;">
@@ -2581,7 +2709,7 @@
             <input type="time" id="morningBriefingTime" value="06:30" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
           </div>
           <div style="font-size:0.7rem; color:var(--text-dim); margin-top:4px; margin-left:24px; line-height:1.5;">
-            Jarvis sends your full day summary via Telegram — schedule, reminders, and recurring tasks.
+            With cloud sync on, a <strong>scheduled job</strong> in Supabase can send this via Telegram at your chosen time even when the app is closed (see <code>supabase/functions/morning-brief</code>). Otherwise the brief only runs while this tab is open.
           </div>
         </div>
 
@@ -2619,7 +2747,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=1"></script>
-<script src="app.js?v=38"></script>
+<script src="app.js?v=49"></script>
 
 </body>
 </html>
