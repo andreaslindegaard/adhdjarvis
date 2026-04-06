@@ -45,7 +45,7 @@
     },
 
     save(key, data) {
-      const delay = key === 'notebook' ? 2000 : 500;
+      const delay = key === 'notebook' ? 2000 : key === 'recurring' ? 0 : 500;
       return debounce(key, () => {
         return client
           .from('planner_data')
@@ -59,23 +59,23 @@
       }, delay);
     },
 
-    listen(key, callback) {
-      let cancelled = false;
-      client
+    fetchKey(key) {
+      if (!client) return Promise.resolve(null);
+      return client
         .from('planner_data')
-        .select('payload')
+        .select('payload, updated_at')
         .eq('key', key)
         .maybeSingle()
         .then(({ data, error }) => {
-          if (cancelled) return;
           if (error && error.code !== 'PGRST116') {
-            console.warn('SupabaseSync listen initial:', key, error);
+            console.warn('SupabaseSync fetchKey:', key, error);
+            return null;
           }
-          if (data && data.payload !== undefined) {
-            callback(data.payload);
-          }
+          return data || null;
         });
+    },
 
+    listen(key, callback) {
       const filter = `key=eq.${key}`;
       const channel = client
         .channel(`planner_data:${key}`)
@@ -85,14 +85,13 @@
           (payload) => {
             const row = payload.new;
             if (row && row.payload !== undefined) {
-              callback(row.payload);
+              callback(row.payload, { updated_at: row.updated_at });
             }
           }
         )
         .subscribe();
 
       return () => {
-        cancelled = true;
         if (channel && typeof channel.unsubscribe === 'function') {
           channel.unsubscribe().catch(() => {});
         } else {

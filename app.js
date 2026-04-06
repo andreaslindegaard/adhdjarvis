@@ -32,10 +32,12 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 33;
+  const SW_SCRIPT_VERSION = 36;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
+  /** Last applied server `updated_at` per planner_data key (ms); drops stale realtime/duplicate payloads */
+  let lastRemoteWriteAt = {};
 
   // ---- Data layer ----
   const STORAGE_KEY = 'endless-planner-notes';
@@ -114,7 +116,7 @@
   // notes structure: { "2026-03-29": [ { id, text, done, time } ] }
   let notes = loadNotes();
 
-  // recurring structure: [ { id, text, time, startDate, doneDate } ] — checking off removes the rule (no repeat)
+  // recurring structure: [ { id, text, time, startDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
 
   // ---- Date helpers ----
@@ -745,6 +747,10 @@
         ['monthly', 'M\u00e5nedlig'],
         ['yearly', '\u00c5rlig']
       ];
+      if (recurringId) {
+        const _recInit = recurring.find(r => r.id === recurringId);
+        selectedRepeat = _recInit && _recInit.frequency ? _recInit.frequency : 'daily';
+      }
 
       const reminderRow = document.createElement('div');
       reminderRow.className = 'edit-reminder-row';
@@ -795,26 +801,27 @@
       typeRow.appendChild(eventBtn);
       typeRow.appendChild(taskBtn);
 
-      let repeatRow = null;
-      if (!recurringId) {
-        repeatRow = document.createElement('div');
-        repeatRow.className = 'edit-reminder-row edit-repeat-row';
-        repeatChoices.forEach(([freq, label]) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'reminder-option edit-repeat-option' + (freq === null ? ' selected' : '');
-          btn.textContent = label;
-          btn.addEventListener('mousedown', (ev) => {
-            ev.preventDefault();
-            selectedRepeat = freq;
-            repeatRow.querySelectorAll('.edit-repeat-option').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            refreshRepeatSummary();
-            closeEditPanels();
-          });
-          repeatRow.appendChild(btn);
+      const repeatChoicesForRow = recurringId
+        ? repeatChoices.filter(([f]) => f !== null)
+        : repeatChoices;
+      const repeatRow = document.createElement('div');
+      repeatRow.className = 'edit-reminder-row edit-repeat-row';
+      repeatChoicesForRow.forEach(([freq, label]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const isSel = (freq === null && selectedRepeat == null) || freq === selectedRepeat;
+        btn.className = 'reminder-option edit-repeat-option' + (isSel ? ' selected' : '');
+        btn.textContent = label;
+        btn.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          selectedRepeat = freq;
+          repeatRow.querySelectorAll('.edit-repeat-option').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          refreshRepeatSummary();
+          closeEditPanels();
         });
-      }
+        repeatRow.appendChild(btn);
+      });
 
       const optsBar = document.createElement('div');
       optsBar.className = 'edit-opts-bar';
@@ -858,7 +865,6 @@
 
       const remTrig = makeTrigger('P\u00e5mindelse', 'reminder');
       const typeTrig = makeTrigger('Type', 'type');
-      let repTrig = null;
 
       function refreshReminderSummary() {
         const found = leadOptions.find(([m]) =>
@@ -871,8 +877,9 @@
         typeTrig.summary.textContent = selectedIsEvent ? 'Begivenhed' : 'Opgave';
       }
 
+      const repTrig = makeTrigger('Gentagelse', 'repeat');
+
       function refreshRepeatSummary() {
-        if (!repTrig) return;
         const found = repeatChoices.find(([f]) =>
           (f === null && selectedRepeat == null) || f === selectedRepeat
         );
@@ -881,15 +888,11 @@
 
       refreshReminderSummary();
       refreshTypeSummary();
+      refreshRepeatSummary();
 
       optsBar.appendChild(remTrig.btn);
       optsBar.appendChild(typeTrig.btn);
-
-      if (!recurringId) {
-        repTrig = makeTrigger('Gentagelse', 'repeat');
-        refreshRepeatSummary();
-        optsBar.appendChild(repTrig.btn);
-      }
+      optsBar.appendChild(repTrig.btn);
 
       const panelReminder = document.createElement('div');
       panelReminder.className = 'edit-opts-panel';
@@ -904,13 +907,11 @@
       panelsWrap.appendChild(panelReminder);
       panelsWrap.appendChild(panelType);
 
-      if (repeatRow) {
-        const panelRepeat = document.createElement('div');
-        panelRepeat.className = 'edit-opts-panel';
-        panelRepeat.dataset.editPanel = 'repeat';
-        panelRepeat.appendChild(repeatRow);
-        panelsWrap.appendChild(panelRepeat);
-      }
+      const panelRepeat = document.createElement('div');
+      panelRepeat.className = 'edit-opts-panel';
+      panelRepeat.dataset.editPanel = 'repeat';
+      panelRepeat.appendChild(repeatRow);
+      panelsWrap.appendChild(panelRepeat);
 
       editWrap.appendChild(textarea);
       editWrap.appendChild(optsBar);
@@ -938,6 +939,19 @@
             if (time) rec.time = time;
             rec.leadTime = selectedLeadTime;
             rec.isEvent = selectedIsEvent;
+            if (selectedRepeat) {
+              const f = freqFromRepeatChoice(selectedRepeat, date);
+              const oldSig = [rec.frequency, rec.dayOfWeek ?? '', rec.month ?? '', rec.dayOfMonth ?? ''].join('|');
+              rec.frequency = f.frequency;
+              if ('dayOfWeek' in f) rec.dayOfWeek = f.dayOfWeek;
+              else delete rec.dayOfWeek;
+              if ('month' in f) rec.month = f.month;
+              else delete rec.month;
+              if ('dayOfMonth' in f) rec.dayOfMonth = f.dayOfMonth;
+              else delete rec.dayOfMonth;
+              const newSig = [rec.frequency, rec.dayOfWeek ?? '', rec.month ?? '', rec.dayOfMonth ?? ''].join('|');
+              if (oldSig !== newSig) rec.startDate = date;
+            }
             saveRecurring();
           }
         } else if (selectedRepeat) {
@@ -3047,6 +3061,80 @@
   nbResizeObserver.observe(document.getElementById('notebookSection'));
 
   // ---- Supabase sync ----
+  function acceptRemoteWrite(key, meta) {
+    const ua = meta && meta.updated_at;
+    if (!ua) return true;
+    const t = new Date(ua).getTime();
+    if (Number.isNaN(t)) return true;
+    const prev = lastRemoteWriteAt[key];
+    if (prev != null && t < prev) return false;
+    lastRemoteWriteAt[key] = t;
+    return true;
+  }
+
+  function applyRemotePayload(key, remote, meta) {
+    if (!acceptRemoteWrite(key, meta)) return false;
+    if (key === 'notes') {
+      notes = remote;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+      return true;
+    }
+    if (key === 'recurring') {
+      recurring = remote;
+      localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
+      return true;
+    }
+    if (key === 'notebook') {
+      notebook = remote;
+      if (!notebook.activePageId && notebook.pages?.length) {
+        notebook.activePageId = notebook.pages[0].id;
+      }
+      localStorage.setItem(NB_STORAGE_KEY, JSON.stringify(notebook));
+      return true;
+    }
+    if (key === 'smartLinks') {
+      smartLinks = remote;
+      localStorage.setItem(SMARTLINKS_KEY, JSON.stringify(smartLinks));
+      return true;
+    }
+    if (key === 'notifSettings') {
+      const merged = remote && typeof remote === 'object' ? { ...remote } : {};
+      let tz = '';
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch (_) {}
+      const hadTimeZone = !!(merged.timeZone && String(merged.timeZone).trim());
+      if (!hadTimeZone && tz) merged.timeZone = tz;
+      localStorage.setItem(NOTIF_KEY, JSON.stringify(merged));
+      if (syncReady && !hadTimeZone && tz) saveNotifSettings(merged);
+      return true;
+    }
+    if (key === 'morningBriefSent') {
+      if (remote && typeof remote === 'object' && remote.date) {
+        morningBriefSentDate = remote.date;
+        try {
+          localStorage.setItem(MORNING_BRIEF_SENT_LS, remote.date);
+        } catch (_) {}
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async function hydratePlannerDataFromServer() {
+    if (typeof SupabaseSync.fetchKey !== 'function') return;
+    const keys = ['notes', 'recurring', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
+    for (const key of keys) {
+      try {
+        const row = await SupabaseSync.fetchKey(key);
+        if (!row || row.payload === undefined) continue;
+        applyRemotePayload(key, row.payload, { updated_at: row.updated_at });
+      } catch (e) {
+        console.warn('hydrate', key, e);
+      }
+    }
+  }
+
   function updateSyncStatusUI(text, color) {
     const el = document.getElementById('syncStatus');
     if (el) {
@@ -3084,51 +3172,31 @@
       return false;
     }
 
-    syncListeners.push(SupabaseSync.listen('notes', (remote) => {
-      notes = remote;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+    syncListeners.push(SupabaseSync.listen('notes', (remote, meta) => {
+      if (!applyRemotePayload('notes', remote, meta)) return;
       if (!isUserEditing()) render();
     }));
 
-    syncListeners.push(SupabaseSync.listen('recurring', (remote) => {
-      recurring = remote;
-      localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
+    syncListeners.push(SupabaseSync.listen('recurring', (remote, meta) => {
+      if (!applyRemotePayload('recurring', remote, meta)) return;
       if (!isUserEditing()) render();
     }));
 
-    syncListeners.push(SupabaseSync.listen('notebook', (remote) => {
-      notebook = remote;
-      if (!notebook.activePageId && notebook.pages?.length) {
-        notebook.activePageId = notebook.pages[0].id;
-      }
-      localStorage.setItem(NB_STORAGE_KEY, JSON.stringify(notebook));
+    syncListeners.push(SupabaseSync.listen('notebook', (remote, meta) => {
+      if (!applyRemotePayload('notebook', remote, meta)) return;
       if (!isUserEditing()) renderNotebook();
     }));
 
-    syncListeners.push(SupabaseSync.listen('smartLinks', (remote) => {
-      smartLinks = remote;
-      localStorage.setItem(SMARTLINKS_KEY, JSON.stringify(smartLinks));
+    syncListeners.push(SupabaseSync.listen('smartLinks', (remote, meta) => {
+      applyRemotePayload('smartLinks', remote, meta);
     }));
 
-    syncListeners.push(SupabaseSync.listen('notifSettings', (remote) => {
-      const merged = remote && typeof remote === 'object' ? { ...remote } : {};
-      let tz = '';
-      try {
-        tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      } catch (_) {}
-      const hadTimeZone = !!(merged.timeZone && String(merged.timeZone).trim());
-      if (!hadTimeZone && tz) merged.timeZone = tz;
-      localStorage.setItem(NOTIF_KEY, JSON.stringify(merged));
-      if (syncReady && !hadTimeZone && tz) saveNotifSettings(merged);
+    syncListeners.push(SupabaseSync.listen('notifSettings', (remote, meta) => {
+      applyRemotePayload('notifSettings', remote, meta);
     }));
 
-    syncListeners.push(SupabaseSync.listen('morningBriefSent', (remote) => {
-      if (remote && typeof remote === 'object' && remote.date) {
-        morningBriefSentDate = remote.date;
-        try {
-          localStorage.setItem(MORNING_BRIEF_SENT_LS, remote.date);
-        } catch (_) {}
-      }
+    syncListeners.push(SupabaseSync.listen('morningBriefSent', (remote, meta) => {
+      applyRemotePayload('morningBriefSent', remote, meta);
     }));
   }
 
@@ -3156,8 +3224,6 @@
 
     try {
       await SupabaseSync.init(SUPABASE_CONFIG);
-      syncReady = true;
-      updateAuthUI();
 
       await SupabaseSync.migrateFromLocalStorage({
         notes,
@@ -3166,6 +3232,10 @@
         smartLinks,
         notifSettings: loadNotifSettings()
       });
+
+      await hydratePlannerDataFromServer();
+      syncReady = true;
+      updateAuthUI();
 
       startSyncListeners();
 
@@ -3548,14 +3618,20 @@
     });
   }
 
-  // ---- Initial render ----
-  render();
-  renderNotebook();
-  renderSidebar();
-  applyLayout();
-  setTimeout(updateStickyOffsets, 50);
+  async function boot() {
+    render();
+    renderNotebook();
+    renderSidebar();
+    applyLayout();
+    setTimeout(updateStickyOffsets, 50);
+    await initCloudSync();
+    render();
+    renderNotebook();
+    applyLayout();
+    setTimeout(updateStickyOffsets, 50);
+    registerServiceWorker();
+    ensureNotifTimeZone();
+  }
 
-  registerServiceWorker();
-  ensureNotifTimeZone();
-  initCloudSync();
+  boot();
 })();
