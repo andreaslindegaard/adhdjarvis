@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 37;
+  const SW_SCRIPT_VERSION = 38;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -486,6 +486,19 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function isGoogleCalendarAutoSendEnabled() {
+    try {
+      return !!loadNotifSettings().googleCalendarAutoSend;
+    } catch {
+      return false;
+    }
+  }
+
+  function maybeAutoSendEventToGoogleCalendar(event) {
+    if (!isGoogleCalendarAutoSendEnabled()) return;
+    window.open(buildGoogleCalendarUrl(event), '_blank', 'noopener');
   }
 
   function renderTagsInText(text) {
@@ -1799,7 +1812,7 @@
       const freq = parseRecurringFrequency(text, date);
       let cleanText = applySmartLinks(cleanRecurringText(text));
       if (leadTime !== null) cleanText = cleanLeadTimeText(cleanText);
-      recurring.push({
+      const rec = {
         id: crypto.randomUUID(),
         text: cleanText || text,
         time: parsedTime || null,
@@ -1811,8 +1824,19 @@
         dayOfMonth: freq.dayOfMonth,
         leadTime: leadTime,
         isEvent: isEvent || false
-      });
+      };
+      recurring.push(rec);
       saveRecurring();
+      if (rec.isEvent) {
+        maybeAutoSendEventToGoogleCalendar({
+          id: rec.id,
+          date: rec.startDate,
+          text: rec.text,
+          time: rec.time || null,
+          leadTime: rec.leadTime ?? null,
+          recurring: rec
+        });
+      }
       render();
       return;
     }
@@ -1824,17 +1848,28 @@
     if (textLeadTime !== null) text = cleanLeadTimeText(text);
     const leadTime = uiLeadTime || textLeadTime;
 
-    notes[date].push({
+    const note = {
       id: crypto.randomUUID(),
       text,
       done: false,
       time: parsedTime || null,
       leadTime: leadTime,
       isEvent: isEvent || false
-    });
+    };
+
+    notes[date].push(note);
 
     notes[date] = sortNotesByTime(notes[date]);
     saveNotes(notes);
+    if (note.isEvent) {
+      maybeAutoSendEventToGoogleCalendar({
+        id: note.id,
+        date,
+        text: note.text,
+        time: note.time || null,
+        leadTime: note.leadTime ?? null
+      });
+    }
     render();
   }
 
@@ -2885,19 +2920,20 @@
     leadTime: 15,
     morningBriefing: true,
     morningTime: '06:30',
-    timeZone: ''
+    timeZone: '',
+    googleCalendarAutoSend: false
   };
 
   function loadNotifSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem(NOTIF_KEY));
-      if (saved && saved.telegramBotToken) return saved;
+      if (saved && typeof saved === 'object') return { ...DEFAULT_NOTIF_SETTINGS, ...saved };
       // Auto-save defaults if nothing saved yet
       localStorage.setItem(NOTIF_KEY, JSON.stringify(DEFAULT_NOTIF_SETTINGS));
-      return DEFAULT_NOTIF_SETTINGS;
+      return { ...DEFAULT_NOTIF_SETTINGS };
     } catch {
       localStorage.setItem(NOTIF_KEY, JSON.stringify(DEFAULT_NOTIF_SETTINGS));
-      return DEFAULT_NOTIF_SETTINGS;
+      return { ...DEFAULT_NOTIF_SETTINGS };
     }
   }
 
@@ -3173,6 +3209,7 @@
     document.getElementById('notifLeadTime').value = String(s.leadTime ?? 15);
     document.getElementById('morningBriefingToggle').checked = !!s.morningBriefing;
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
+    document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
 
     const statusEl = document.getElementById('browserNotifStatus');
     if ('Notification' in window) {
@@ -3235,6 +3272,7 @@
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
       morningTime: document.getElementById('morningBriefingTime').value || '06:30',
+      googleCalendarAutoSend: document.getElementById('googleCalendarAutoSendToggle').checked,
       timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : ''
@@ -3345,7 +3383,7 @@
       return true;
     }
     if (key === 'notifSettings') {
-      const merged = remote && typeof remote === 'object' ? { ...remote } : {};
+      const merged = remote && typeof remote === 'object' ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : { ...DEFAULT_NOTIF_SETTINGS };
       let tz = '';
       try {
         tz = Intl.DateTimeFormat().resolvedOptions().timeZone;

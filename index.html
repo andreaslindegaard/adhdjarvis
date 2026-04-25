@@ -2726,6 +2726,16 @@
         </div>
 
         <div style="border-top:1px solid var(--border-light); padding-top:14px;">
+          <label style="font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="googleCalendarAutoSendToggle" style="accent-color:var(--accent); width:16px; height:16px;">
+            Auto send events to Google Calendar
+          </label>
+          <div style="font-size:0.7rem; color:var(--text-dim); margin-top:4px; margin-left:24px; line-height:1.5;">
+            Opens Google Calendar when you create an event, ready to save.
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
           <label style="font-size:0.82rem; font-weight:600;">Remind me</label>
           <select id="notifLeadTime" style="margin-left:8px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
             <option value="0">At the exact time</option>
@@ -2759,7 +2769,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=2"></script>
-<script src="app.js?v=53"></script>
+<script src="app.js?v=54"></script>
 
 </body>
 </html>
