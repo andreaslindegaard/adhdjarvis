@@ -769,6 +769,7 @@
 
     doc.innerHTML = html;
     bindEvents();
+    updateStickyOffsets();
     scrollToTodayOnBoot();
   }
 
@@ -3290,23 +3291,46 @@
   });
 
   // ---- Sticky offset sync ----
+  function getStickyBaseOffset() {
+    const topbar = document.querySelector('.topbar');
+    const topbarH = topbar ? topbar.offsetHeight : 0;
+    const mobileSearchRow = document.getElementById('mobileSearchRow');
+    const mobileSearchActive = mobileSearchRow && mobileSearchRow.classList.contains('active');
+    const mobileSearchH = mobileSearchActive ? mobileSearchRow.offsetHeight : 0;
+    return topbarH + mobileSearchH;
+  }
+
+  function getCalendarStickyOffset() {
+    let stickyH = getStickyBaseOffset();
+    if (layoutState.mode === 'tabs') {
+      const viewTabsEl = document.getElementById('viewTabs');
+      stickyH += viewTabsEl ? viewTabsEl.offsetHeight : 0;
+    }
+    return stickyH;
+  }
+
   function updateStickyOffsets() {
-    const topbarH = document.querySelector('.topbar').offsetHeight;
+    const topbar = document.querySelector('.topbar');
+    const topbarH = topbar ? topbar.offsetHeight : 0;
+    const mobileSearchRow = document.getElementById('mobileSearchRow');
     const nbSection = document.getElementById('notebookSection');
     const viewTabsEl = document.getElementById('viewTabs');
+    const stickyBase = getStickyBaseOffset();
+
+    if (mobileSearchRow) {
+      mobileSearchRow.style.top = topbarH + 'px';
+    }
 
     if (layoutState.mode === 'tabs') {
-      viewTabsEl.style.top = topbarH + 'px';
+      viewTabsEl.style.top = stickyBase + 'px';
       const viewTabsH = viewTabsEl.offsetHeight;
       document.querySelectorAll('.month-header').forEach(mh => {
-        mh.style.top = (topbarH + viewTabsH) + 'px';
+        mh.style.top = (stickyBase + viewTabsH) + 'px';
       });
     } else {
-      nbSection.style.top = topbarH + 'px';
-      const nbH = nbSection.offsetHeight;
-      const totalOffset = topbarH + nbH;
+      if (nbSection) nbSection.style.top = topbarH + 'px';
       document.querySelectorAll('.month-header').forEach(mh => {
-        mh.style.top = totalOffset + 'px';
+        mh.style.top = stickyBase + 'px';
       });
     }
   }
@@ -3316,17 +3340,7 @@
     const el = document.querySelector('.day-block.is-today');
     if (!el) return;
 
-    const topbar = document.querySelector('.topbar');
-    const topbarH = topbar ? topbar.offsetHeight : 0;
-    let stickyH = topbarH;
-
-    if (layoutState.mode === 'tabs') {
-      const viewTabsEl = document.getElementById('viewTabs');
-      stickyH += viewTabsEl ? viewTabsEl.offsetHeight : 0;
-    } else {
-      const nbSection = document.getElementById('notebookSection');
-      stickyH += nbSection ? nbSection.offsetHeight : 0;
-    }
+    const stickyH = getCalendarStickyOffset();
 
     let prev = el.previousElementSibling;
     while (prev && !prev.classList.contains('month-header')) {
@@ -3770,17 +3784,7 @@
       const el = document.getElementById('day-' + key);
       if (el) {
         updateStickyOffsets();
-        const topbar = document.querySelector('.topbar');
-        const topbarH = topbar ? topbar.offsetHeight : 0;
-        let stickyH = topbarH;
-
-        if (layoutState.mode === 'tabs') {
-          const viewTabsEl = document.getElementById('viewTabs');
-          stickyH += viewTabsEl ? viewTabsEl.offsetHeight : 0;
-        } else {
-          const nbSection = document.getElementById('notebookSection');
-          stickyH += nbSection ? nbSection.offsetHeight : 0;
-        }
+        const stickyH = getCalendarStickyOffset();
 
         let prev = el.previousElementSibling;
         while (prev && !prev.classList.contains('month-header')) {
@@ -3860,6 +3864,8 @@
           layoutState.mode = 'tabs';
           saveLayout();
           applyLayout();
+        } else {
+          updateStickyOffsets();
         }
       }, 200);
     };
@@ -3875,6 +3881,7 @@
     mobileSearchToggle.addEventListener('click', () => {
       mobileSearchRow.classList.add('active');
       mobileSearchInput.value = searchBox.value;
+      updateStickyOffsets();
       setTimeout(() => mobileSearchInput.focus(), 50);
     });
   }
@@ -3887,6 +3894,7 @@
       searchTerm = '';
       render();
       searchNotebook('');
+      updateStickyOffsets();
     });
   }
 
