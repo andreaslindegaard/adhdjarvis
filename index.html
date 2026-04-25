@@ -578,29 +578,40 @@
       font-weight: 500;
     }
 
-    .note-delete {
+    .note-delete,
+    .note-edit,
+    .google-calendar-btn {
       background: none;
       border: none;
       color: var(--text-dim);
       cursor: pointer;
-      font-size: 1rem;
       padding: 0 3px;
       transition: all 0.15s ease;
       line-height: 1;
+    }
+
+    .note-delete {
+      font-size: 1rem;
     }
 
     .note-edit {
-      background: none;
-      border: none;
-      color: var(--text-dim);
-      cursor: pointer;
       font-size: 0.8rem;
-      padding: 0 3px;
-      transition: all 0.15s ease;
-      line-height: 1;
     }
 
-    .note-edit:hover { color: var(--accent); opacity: 1 !important; }
+    .google-calendar-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: inherit;
+    }
+
+    .note-edit:hover,
+    .google-calendar-btn:hover {
+      color: var(--accent);
+      opacity: 1 !important;
+    }
 
     .note-edit-wrap {
       flex: 1;
@@ -1153,7 +1164,7 @@
         display: flex;
         opacity: 1;
       }
-      .note-edit, .note-delete {
+      .note-edit, .note-delete, .google-calendar-btn {
         min-width: 40px;
         min-height: 36px;
         display: flex;
@@ -2581,6 +2592,7 @@
           <button id="mobileCalPickerBtn" class="mobile-only-menu-item" role="menuitem">Month calendar</button>
           <button id="exportBtn" role="menuitem">Export</button>
           <button id="importBtn" role="menuitem">Import</button>
+          <button id="googleCalendarExportBtn" role="menuitem">Google Calendar</button>
           <button id="smartLinksBtn" role="menuitem">Smart Links</button>
           <button id="notificationsBtn" role="menuitem">Jarvis preferences</button>
         </div>
@@ -2747,7 +2759,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=2"></script>
-<script src="app.js?v=52"></script>
+<script src="app.js?v=53"></script>
 
 </body>
 </html>

@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 36;
+  const SW_SCRIPT_VERSION = 37;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -257,6 +257,237 @@
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  function getBrowserTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function plainCalendarText(text) {
+    return String(text || '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/^\s*[-*]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'ADHD Jarvis event';
+  }
+
+  function addDaysToDateKey(key, days) {
+    const d = parseDate(key);
+    d.setDate(d.getDate() + days);
+    return dateKey(d);
+  }
+
+  function makeCalendarDate(date, time) {
+    const d = parseDate(date);
+    if (time) {
+      const [hours, minutes] = String(time).split(':').map(Number);
+      d.setHours(hours || 0, minutes || 0, 0, 0);
+    }
+    return d;
+  }
+
+  function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60000);
+  }
+
+  function formatCompactDate(key) {
+    return key.replace(/-/g, '');
+  }
+
+  function formatCompactDateTime(date) {
+    return `${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}T${pad2(date.getHours())}${pad2(date.getMinutes())}00`;
+  }
+
+  function buildCalendarRRule(event) {
+    const src = event.recurring || event;
+    const freq = src.frequency;
+    const dayNames = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+    if (freq === 'daily') return 'FREQ=DAILY';
+    if (freq === 'weekly') return `FREQ=WEEKLY;BYDAY=${dayNames[src.dayOfWeek ?? parseDate(event.date).getDay()]}`;
+    if (freq === 'biweekly') return `FREQ=WEEKLY;INTERVAL=2;BYDAY=${dayNames[src.dayOfWeek ?? parseDate(event.date).getDay()]}`;
+    if (freq === 'monthly') return `FREQ=MONTHLY;BYMONTHDAY=${src.dayOfMonth ?? parseDate(event.date).getDate()}`;
+    if (freq === 'yearly') {
+      const d = parseDate(event.date);
+      return `FREQ=YEARLY;BYMONTH=${(src.month ?? d.getMonth()) + 1};BYMONTHDAY=${src.dayOfMonth ?? d.getDate()}`;
+    }
+    return null;
+  }
+
+  function getCalendarEventForAction(date, id, recurringId) {
+    if (recurringId) {
+      const rec = recurring.find(r => r.id === recurringId);
+      if (!rec) return null;
+      return {
+        id: rec.id,
+        date: rec.startDate || date,
+        occurrenceDate: date,
+        text: rec.text,
+        time: rec.time || null,
+        leadTime: rec.leadTime ?? null,
+        recurring: rec
+      };
+    }
+    const note = (notes[date] || []).find(n => n.id === id);
+    if (!note) return null;
+    return {
+      id: note.id,
+      date,
+      text: note.text,
+      time: note.time || null,
+      leadTime: note.leadTime ?? null
+    };
+  }
+
+  function buildGoogleCalendarUrl(event) {
+    const params = new URLSearchParams();
+    const title = plainCalendarText(event.text);
+    params.set('action', 'TEMPLATE');
+    params.set('text', title);
+    params.set('details', 'Created from ADHD Jarvis');
+    params.set('ctz', getBrowserTimeZone());
+
+    if (event.time) {
+      const start = makeCalendarDate(event.date, event.time);
+      const end = addMinutes(start, 60);
+      params.set('dates', `${formatCompactDateTime(start)}/${formatCompactDateTime(end)}`);
+    } else {
+      params.set('dates', `${formatCompactDate(event.date)}/${formatCompactDate(addDaysToDateKey(event.date, 1))}`);
+    }
+
+    const rrule = buildCalendarRRule(event);
+    if (rrule) params.set('recur', `RRULE:${rrule}`);
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  }
+
+  function escapeIcsText(value) {
+    return plainCalendarText(value)
+      .replace(/\\/g, '\\\\')
+      .replace(/\n/g, '\\n')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;');
+  }
+
+  function foldIcsLine(line) {
+    if (line.length <= 75) return line;
+    const parts = [];
+    let rest = line;
+    while (rest.length > 75) {
+      parts.push(rest.slice(0, 75));
+      rest = ' ' + rest.slice(75);
+    }
+    parts.push(rest);
+    return parts.join('\r\n');
+  }
+
+  function formatIcsDateTime(date) {
+    return `${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}T${pad2(date.getHours())}${pad2(date.getMinutes())}00`;
+  }
+
+  function formatIcsUtcDateTime(date) {
+    return `${date.getUTCFullYear()}${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}T${pad2(date.getUTCHours())}${pad2(date.getUTCMinutes())}${pad2(date.getUTCSeconds())}Z`;
+  }
+
+  function collectGoogleCalendarEvents() {
+    const events = [];
+    for (const [date, dayNotes] of Object.entries(notes)) {
+      if (!Array.isArray(dayNotes)) continue;
+      dayNotes
+        .filter(note => note && note.isEvent === true && !note.smartList)
+        .forEach(note => events.push({
+          id: note.id,
+          date,
+          text: note.text,
+          time: note.time || null,
+          leadTime: note.leadTime ?? null
+        }));
+    }
+    recurring
+      .filter(rec => rec && rec.isEvent === true)
+      .forEach(rec => events.push({
+        id: rec.id,
+        date: rec.startDate,
+        text: rec.text,
+        time: rec.time || null,
+        leadTime: rec.leadTime ?? null,
+        recurring: rec
+      }));
+    return events.sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
+  }
+
+  function buildIcsEvent(event, nowStamp, tz) {
+    const lines = [
+      'BEGIN:VEVENT',
+      `UID:adhd-jarvis-${event.id}@local`,
+      `DTSTAMP:${nowStamp}`,
+      `SUMMARY:${escapeIcsText(event.text)}`,
+      'DESCRIPTION:Created from ADHD Jarvis'
+    ];
+
+    if (event.time) {
+      const start = makeCalendarDate(event.date, event.time);
+      const end = addMinutes(start, 60);
+      lines.push(`DTSTART;TZID=${tz}:${formatIcsDateTime(start)}`);
+      lines.push(`DTEND;TZID=${tz}:${formatIcsDateTime(end)}`);
+    } else {
+      lines.push(`DTSTART;VALUE=DATE:${formatCompactDate(event.date)}`);
+      lines.push(`DTEND;VALUE=DATE:${formatCompactDate(addDaysToDateKey(event.date, 1))}`);
+    }
+
+    const rrule = buildCalendarRRule(event);
+    if (rrule) lines.push(`RRULE:${rrule}`);
+
+    if (event.leadTime && event.time) {
+      lines.push('BEGIN:VALARM');
+      lines.push(`TRIGGER:-PT${event.leadTime}M`);
+      lines.push('ACTION:DISPLAY');
+      lines.push(`DESCRIPTION:${escapeIcsText(event.text)}`);
+      lines.push('END:VALARM');
+    }
+
+    lines.push('END:VEVENT');
+    return lines.map(foldIcsLine).join('\r\n');
+  }
+
+  function downloadGoogleCalendarIcs() {
+    const events = collectGoogleCalendarEvents();
+    if (events.length === 0) {
+      alert('No calendar events to export yet.');
+      return;
+    }
+
+    const tz = getBrowserTimeZone();
+    const nowStamp = formatIcsUtcDateTime(new Date());
+    const body = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//ADHD Jarvis//Planner//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:ADHD Jarvis`,
+      `X-WR-TIMEZONE:${tz}`,
+      ...events.map(event => buildIcsEvent(event, nowStamp, tz)),
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([body], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `adhd-jarvis-google-calendar-${dateKey(new Date())}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function renderTagsInText(text) {
     return text.replace(/#(\w+)/g, '<span class="note-tag">#$1</span>');
   }
@@ -461,6 +692,9 @@
           const checkboxHtml = note.isEvent
             ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
             : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">`;
+          const googleCalendarButton = note.isEvent
+            ? `<button class="google-calendar-btn" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Send to Google Calendar" aria-label="Send to Google Calendar">G</button>`
+            : '';
           html += `<div class="note-wrap" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
             <div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
               ${checkboxHtml}
@@ -468,6 +702,7 @@
               <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
             </div>
             <div class="note-actions">
+              ${googleCalendarButton}
               <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">&times;</button>
               <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
             </div>
@@ -571,6 +806,16 @@
 
     const target = e.target.closest('[class]');
     if (!target) return;
+
+    if (target.classList.contains('google-calendar-btn')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const { id, date, recurringId } = target.dataset;
+      const event = getCalendarEventForAction(date, id, recurringId);
+      if (!event) return;
+      window.open(buildGoogleCalendarUrl(event), '_blank', 'noopener');
+      return;
+    }
 
     if (target.classList.contains('smart-list-item-cb')) {
       const { id, date, itemId } = target.dataset;
@@ -1950,6 +2195,8 @@
     };
     document.getElementById('modalOverlay').classList.add('active');
   });
+
+  document.getElementById('googleCalendarExportBtn')?.addEventListener('click', downloadGoogleCalendarIcs);
 
   // ---- Smart Links editor ----
   function renderSmartLinksUI() {
