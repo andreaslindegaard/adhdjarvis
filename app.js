@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 38;
+  const SW_SCRIPT_VERSION = 43;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -44,6 +44,7 @@
   const RECURRING_KEY = 'endless-planner-recurring';
   const SMARTLINKS_KEY = 'endless-planner-smartlinks';
   const LAYOUT_KEY = 'endless-planner-layout';
+  const STANDALONE_TODOS_KEY = 'endless-planner-standalone-todos';
 
   function loadNotes() {
     try {
@@ -77,6 +78,17 @@
   function saveSmartLinks() {
     localStorage.setItem(SMARTLINKS_KEY, JSON.stringify(smartLinks));
     if (syncReady) SupabaseSync.save('smartLinks', smartLinks);
+  }
+
+  function loadStandaloneTodos() {
+    try {
+      return JSON.parse(localStorage.getItem(STANDALONE_TODOS_KEY)) || [];
+    } catch { return []; }
+  }
+
+  function saveStandaloneTodos() {
+    localStorage.setItem(STANDALONE_TODOS_KEY, JSON.stringify(standaloneTodos));
+    if (syncReady) SupabaseSync.save('standaloneTodos', standaloneTodos);
   }
 
   const defaultSmartLinks = [
@@ -115,6 +127,8 @@
 
   // notes structure: { "2026-03-29": [ { id, text, done, time } ] }
   let notes = loadNotes();
+
+  let standaloneTodos = loadStandaloneTodos();
 
   // recurring structure: [ { id, text, time, startDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
@@ -239,6 +253,8 @@
 
   // ---- Rendering ----
   const doc = document.getElementById('plannerRoot');
+  const calendarTabLayout = document.getElementById('calendarTabLayout');
+  const calendarTodoPanel = document.getElementById('calendarTodoPanel');
   const searchBox = document.getElementById('searchBox');
   let searchTerm = '';
 
@@ -575,6 +591,153 @@
     return blocks.join('');
   }
 
+  function formatTodoPanelDate(key) {
+    if (!key) return '';
+    const today = dateKey(new Date());
+    if (key === today) return 'Today';
+    if (key === addDaysToDateKey(today, 1)) return 'Tomorrow';
+    const d = parseDate(key);
+    return `${WEEKDAYS[d.getDay()].slice(0, 3)} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+  }
+
+  function compareTodoPanelTasks(a, b) {
+    const standaloneRankA = a.kind === 'standalone' ? 0 : 1;
+    const standaloneRankB = b.kind === 'standalone' ? 0 : 1;
+    if (standaloneRankA !== standaloneRankB) return standaloneRankA - standaloneRankB;
+    if (a.kind === 'standalone' && b.kind === 'standalone') {
+      const createdA = a.createdAt || '';
+      const createdB = b.createdAt || '';
+      if (createdA !== createdB) return createdA.localeCompare(createdB);
+    }
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    const timeA = a.time || '99:99';
+    const timeB = b.time || '99:99';
+    if (timeA !== timeB) return timeA.localeCompare(timeB);
+    return (a.text || a.sourceTitle || '').localeCompare((b.text || b.sourceTitle || ''), 'da');
+  }
+
+  function collectTodoPanelTasks() {
+    const tasks = standaloneTodos.map(todo => ({
+      kind: 'standalone',
+      date: '',
+      id: todo.id,
+      itemId: '',
+      text: todo.text || '',
+      done: !!todo.done,
+      time: '',
+      sourceTitle: '',
+      createdAt: todo.createdAt || '',
+      completedAt: todo.completedAt || ''
+    }));
+    for (const key of Object.keys(notes).sort()) {
+      const dayNotes = sortNotesByTime(notes[key] || []);
+      for (const note of dayNotes) {
+        if (note.smartList === 'todo') {
+          const items = Array.isArray(note.listItems) ? note.listItems : [];
+          for (const item of items) {
+            tasks.push({
+              kind: 'smart',
+              date: key,
+              id: note.id,
+              itemId: item.id,
+              text: item.text || '',
+              done: !!item.done,
+              time: note.time || '',
+              sourceTitle: note.text || ''
+            });
+          }
+          continue;
+        }
+
+        if (!note.isEvent && !note.smartList) {
+          tasks.push({
+            kind: 'note',
+            date: key,
+            id: note.id,
+            itemId: '',
+            text: note.text || '',
+            done: !!note.done,
+            time: note.time || '',
+            sourceTitle: ''
+          });
+        }
+      }
+    }
+    return tasks.sort(compareTodoPanelTasks);
+  }
+
+  function renderTodoPanelTask(task) {
+    const checked = task.done ? 'checked' : '';
+    const doneClass = task.done ? ' is-completed' : '';
+    const itemAttr = task.itemId ? ` data-item-id="${escapeHtml(task.itemId)}"` : '';
+    const deleteButton = task.kind === 'standalone'
+      ? `<button type="button" class="calendar-todo-delete" data-action="delete-todo" data-id="${escapeHtml(task.id)}" title="Delete task" aria-label="Delete task">&times;</button>`
+      : '';
+    const textHtml = (task.text || '').trim()
+      ? renderRichText(task.text)
+      : '<span class="smart-list-item-placeholder">Empty item</span>';
+    const sourceHtml = task.sourceTitle
+      ? `<span class="calendar-todo-source">${applySearchHighlight(escapeHtml(task.sourceTitle))}</span>`
+      : '';
+    const timeHtml = task.time ? `<span>${escapeHtml(task.time)}</span>` : '';
+    const dateHtml = task.date ? `<span>${escapeHtml(formatTodoPanelDate(task.date))}</span>` : '';
+    const metaHtml = dateHtml || timeHtml || sourceHtml
+      ? `<div class="calendar-todo-meta">
+          ${dateHtml}
+          ${timeHtml}
+          ${sourceHtml}
+        </div>`
+      : '';
+
+    return `<div class="calendar-todo-item${doneClass}">
+      <input type="checkbox" class="calendar-todo-checkbox" ${checked} data-kind="${escapeHtml(task.kind)}" data-date="${escapeHtml(task.date)}" data-id="${escapeHtml(task.id)}"${itemAttr} aria-label="Toggle task">
+      <div class="calendar-todo-content">
+        <div class="calendar-todo-text">${textHtml}</div>
+        ${metaHtml}
+      </div>
+      ${deleteButton}
+    </div>`;
+  }
+
+  function renderTodoPanelList(items, emptyText) {
+    if (items.length === 0) {
+      return `<div class="calendar-todo-empty">${emptyText}</div>`;
+    }
+    return `<div class="calendar-todo-list">${items.map(renderTodoPanelTask).join('')}</div>`;
+  }
+
+  function renderTodoPanel(options = {}) {
+    if (!calendarTodoPanel) return;
+    const tasks = collectTodoPanelTasks();
+    const activeTasks = tasks.filter(task => !task.done);
+    const completedTasks = tasks.filter(task => task.done);
+
+    calendarTodoPanel.innerHTML = `<div class="calendar-todo-header">
+      <h2>To-do list</h2>
+      <span class="calendar-todo-count">${activeTasks.length}</span>
+    </div>
+    <section class="calendar-todo-section">
+      <div class="calendar-todo-section-header"><span>Active</span><span>${activeTasks.length}</span></div>
+      <form class="calendar-todo-add-form" id="calendarTodoAddForm">
+        <span class="calendar-todo-draft-checkbox" aria-hidden="true"></span>
+        <input type="text" class="calendar-todo-add-input" id="calendarTodoAddInput" placeholder="Add a to-do..." autocomplete="off" spellcheck="false">
+        <span aria-hidden="true"></span>
+      </form>
+      ${renderTodoPanelList(activeTasks, 'No active tasks.')}
+    </section>
+    <section class="calendar-todo-section">
+      <div class="calendar-todo-section-header"><span>Completed</span><span>${completedTasks.length}</span></div>
+      ${renderTodoPanelList(completedTasks, 'Nothing completed yet.')}
+    </section>`;
+
+    if (options.focusAddInput) {
+      requestAnimationFrame(() => {
+        const input = document.getElementById('calendarTodoAddInput');
+        if (input) input.focus();
+      });
+    }
+  }
+
   function render() {
     const { start, end } = getDateRange();
     let html = '';
@@ -768,9 +931,87 @@
     }
 
     doc.innerHTML = html;
+    renderTodoPanel();
     bindEvents();
     updateStickyOffsets();
     scrollToTodayOnBoot();
+  }
+
+  if (calendarTodoPanel) {
+    function addStandaloneTodoFromInput(input) {
+      const text = input ? input.value.trim() : '';
+      if (!text) return false;
+
+      standaloneTodos.push({
+        id: crypto.randomUUID(),
+        text: applySmartLinks(capitalizeFirst(text)),
+        done: false,
+        createdAt: new Date().toISOString(),
+        completedAt: null
+      });
+      saveStandaloneTodos();
+      renderTodoPanel({ focusAddInput: true });
+      return true;
+    }
+
+    calendarTodoPanel.addEventListener('submit', (e) => {
+      const form = e.target.closest('#calendarTodoAddForm');
+      if (!form) return;
+      e.preventDefault();
+
+      addStandaloneTodoFromInput(form.querySelector('#calendarTodoAddInput'));
+    });
+
+    calendarTodoPanel.addEventListener('keydown', (e) => {
+      const input = e.target.closest('#calendarTodoAddInput');
+      if (!input || e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      addStandaloneTodoFromInput(input);
+    });
+
+    calendarTodoPanel.addEventListener('click', (e) => {
+      const deleteBtn = e.target.closest('[data-action="delete-todo"]');
+      if (!deleteBtn) return;
+
+      const { id } = deleteBtn.dataset;
+      standaloneTodos = standaloneTodos.filter(todo => todo.id !== id);
+      saveStandaloneTodos();
+      renderTodoPanel();
+    });
+
+    calendarTodoPanel.addEventListener('change', (e) => {
+      const target = e.target.closest('.calendar-todo-checkbox');
+      if (!target) return;
+
+      const { kind, date, id, itemId } = target.dataset;
+
+      if (kind === 'standalone') {
+        const todo = standaloneTodos.find(item => item.id === id);
+        if (!todo) return;
+        todo.done = target.checked;
+        todo.completedAt = target.checked ? new Date().toISOString() : null;
+        saveStandaloneTodos();
+        renderTodoPanel();
+        return;
+      }
+
+      const dayNotes = notes[date] || [];
+      const note = dayNotes.find(n => n.id === id);
+      if (!note) return;
+
+      if (kind === 'smart') {
+        const item = Array.isArray(note.listItems)
+          ? note.listItems.find(li => li.id === itemId)
+          : null;
+        if (!item) return;
+        item.done = target.checked;
+      } else {
+        note.done = target.checked;
+      }
+
+      saveNotes(notes);
+      render();
+    });
   }
 
   // Event delegation
@@ -2172,7 +2413,7 @@
 
   // ---- Export ----
   document.getElementById('exportBtn').addEventListener('click', () => {
-    const data = JSON.stringify({ notes, recurring, notebook }, null, 2);
+    const data = JSON.stringify({ notes, recurring, standaloneTodos, notebook }, null, 2);
     document.getElementById('modalTitle').textContent = 'Export Data';
     document.getElementById('modalTextarea').value = data;
     document.getElementById('modalTextarea').readOnly = true;
@@ -2196,6 +2437,7 @@
         const imported = JSON.parse(document.getElementById('modalTextarea').value);
         const importedNotes = imported.notes || imported;
         const importedRecurring = imported.recurring || [];
+        const importedStandaloneTodos = Array.isArray(imported.standaloneTodos) ? imported.standaloneTodos : [];
         const importedNotebook = imported.notebook || null;
 
         for (const [date, dayNotes] of Object.entries(importedNotes)) {
@@ -2212,6 +2454,11 @@
             recurring.push(rec);
           }
         }
+        for (const todo of importedStandaloneTodos) {
+          if (todo && todo.id && !standaloneTodos.find(t => t.id === todo.id)) {
+            standaloneTodos.push(todo);
+          }
+        }
         if (importedNotebook?.pages) {
           for (const page of importedNotebook.pages) {
             if (!notebook.pages.find(p => p.id === page.id)) {
@@ -2223,6 +2470,7 @@
         }
         saveNotes(notes);
         saveRecurring();
+        saveStandaloneTodos();
         render();
         document.getElementById('modalOverlay').classList.remove('active');
       } catch {
@@ -2969,6 +3217,14 @@
     localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(sent));
   }
 
+  function markMorningBriefHandled(todayKey) {
+    morningBriefSentDate = todayKey;
+    try {
+      localStorage.setItem(MORNING_BRIEF_SENT_LS, todayKey);
+    } catch (_) {}
+    if (syncReady) SupabaseSync.save('morningBriefSent', { date: todayKey });
+  }
+
   async function sendTelegramMessage(text) {
     const s = loadNotifSettings();
     if (!s.telegramBotToken || !s.telegramChatId) return false;
@@ -3185,14 +3441,8 @@
         if (s.browserEnabled) sendBrowserNotification('Jarvis', plain);
         markNotifSent(briefingId);
       } else {
-        const dayName = WEEKDAYS[now.getDay()];
-        const fallbackHtml =
-          `<b>Good morning, sir.</b>\n` +
-          `Nothing appears on your calendar for ${dayName}. Your day is at your discretion.`;
-        const fallbackPlain = briefingHtmlToPlain(fallbackHtml);
-        if (s.telegramEnabled) sendTelegramMessage(fallbackHtml);
-        if (s.browserEnabled) sendBrowserNotification('Jarvis', fallbackPlain);
         markNotifSent(briefingId);
+        markMorningBriefHandled(todayKey);
       }
     }
   }
@@ -3316,6 +3566,7 @@
     const nbSection = document.getElementById('notebookSection');
     const viewTabsEl = document.getElementById('viewTabs');
     const stickyBase = getStickyBaseOffset();
+    const todoPanel = document.getElementById('calendarTodoPanel');
 
     if (mobileSearchRow) {
       mobileSearchRow.style.top = topbarH + 'px';
@@ -3327,11 +3578,21 @@
       document.querySelectorAll('.month-header').forEach(mh => {
         mh.style.top = (stickyBase + viewTabsH) + 'px';
       });
+      if (todoPanel) {
+        const todoTop = stickyBase + viewTabsH + 16;
+        todoPanel.style.top = todoTop + 'px';
+        todoPanel.style.maxHeight = `calc(100vh - ${todoTop + 16}px)`;
+      }
     } else {
       if (nbSection) nbSection.style.top = topbarH + 'px';
       document.querySelectorAll('.month-header').forEach(mh => {
         mh.style.top = stickyBase + 'px';
       });
+      if (todoPanel) {
+        const todoTop = stickyBase + 16;
+        todoPanel.style.top = todoTop + 'px';
+        todoPanel.style.maxHeight = `calc(100vh - ${todoTop + 16}px)`;
+      }
     }
   }
 
@@ -3383,6 +3644,11 @@
       localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
       return true;
     }
+    if (key === 'standaloneTodos') {
+      standaloneTodos = Array.isArray(remote) ? remote : [];
+      localStorage.setItem(STANDALONE_TODOS_KEY, JSON.stringify(standaloneTodos));
+      return true;
+    }
     if (key === 'notebook') {
       notebook = remote;
       if (!notebook.activePageId && notebook.pages?.length) {
@@ -3422,7 +3688,7 @@
 
   async function hydratePlannerDataFromServer() {
     if (typeof SupabaseSync.fetchKey !== 'function') return;
-    const keys = ['notes', 'recurring', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
+    const keys = ['notes', 'recurring', 'standaloneTodos', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
     for (const key of keys) {
       try {
         const row = await SupabaseSync.fetchKey(key);
@@ -3481,6 +3747,11 @@
       if (!isUserEditing()) render();
     }));
 
+    syncListeners.push(SupabaseSync.listen('standaloneTodos', (remote, meta) => {
+      if (!applyRemotePayload('standaloneTodos', remote, meta)) return;
+      if (!isUserEditing()) renderTodoPanel();
+    }));
+
     syncListeners.push(SupabaseSync.listen('notebook', (remote, meta) => {
       if (!applyRemotePayload('notebook', remote, meta)) return;
       if (!isUserEditing()) renderNotebook();
@@ -3527,6 +3798,7 @@
       await SupabaseSync.migrateFromLocalStorage({
         notes,
         recurring,
+        standaloneTodos,
         notebook,
         smartLinks,
         notifSettings: loadNotifSettings()
@@ -3568,6 +3840,7 @@
     const viewTabs = document.getElementById('viewTabs');
     const nbSection = document.getElementById('notebookSection');
     const plannerRoot = document.getElementById('plannerRoot');
+    const calendarView = calendarTabLayout || plannerRoot;
     const toggleBtn = document.getElementById('viewToggleBtn');
 
     if (layoutState.mode === 'tabs') {
@@ -3581,10 +3854,12 @@
 
       if (layoutState.activeTab === 'notebook') {
         nbSection.classList.remove('hidden');
+        calendarView.classList.add('hidden');
         plannerRoot.classList.add('hidden');
         notebookContent.classList.remove('notebook-collapsed');
       } else {
         nbSection.classList.add('hidden');
+        calendarView.classList.remove('hidden');
         plannerRoot.classList.remove('hidden');
       }
 
@@ -3596,6 +3871,7 @@
       viewTabs.classList.remove('visible');
 
       nbSection.classList.remove('hidden');
+      calendarView.classList.remove('hidden');
       plannerRoot.classList.remove('hidden');
       renderNotebook();
 

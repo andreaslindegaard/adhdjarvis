@@ -271,6 +271,22 @@ async function sendTelegramMessage(
   }
 }
 
+async function markMorningBriefHandled(
+  supabase: ReturnType<typeof createClient>,
+  todayKey: string,
+): Promise<string | null> {
+  const { error } = await supabase.from("planner_data").upsert(
+    {
+      key: "morningBriefSent",
+      payload: { date: todayKey },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" },
+  );
+
+  return error?.message || null;
+}
+
 Deno.serve(async (req) => {
   const cronSecret = Deno.env.get("CRON_SECRET");
   const auth = req.headers.get("Authorization") ?? "";
@@ -364,17 +380,22 @@ Deno.serve(async (req) => {
   const recurring = (byKey.get("recurring") || []) as Recurring[];
 
   const msgHtml = buildMorningBriefing(notes, recurring, todayKey);
-  let text: string;
-  if (msgHtml) {
-    text = msgHtml;
-  } else {
-    const d = parseDateKey(todayKey);
-    const dayName = WEEKDAYS[d.getUTCDay()];
-    text =
-      `<b>Good morning, sir.</b>\nNothing appears on your calendar for ${dayName}. Your day is at your discretion.`;
+  if (!msgHtml) {
+    const handledErr = await markMorningBriefHandled(supabase, todayKey);
+    if (handledErr) {
+      return new Response(
+        JSON.stringify({ ok: false, skipped: "empty_day", persistError: handledErr }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, skipped: "empty_day", sent: false, todayKey, timeZone }),
+      { headers: { "Content-Type": "application/json" } },
+    );
   }
 
-  const ok = await sendTelegramMessage(token, chatId, text);
+  const ok = await sendTelegramMessage(token, chatId, msgHtml);
   if (!ok) {
     return new Response(
       JSON.stringify({ ok: false, error: "telegram_send_failed" }),
@@ -382,18 +403,10 @@ Deno.serve(async (req) => {
     );
   }
 
-  const { error: upErr } = await supabase.from("planner_data").upsert(
-    {
-      key: "morningBriefSent",
-      payload: { date: todayKey },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "key" },
-  );
-
-  if (upErr) {
+  const handledErr = await markMorningBriefHandled(supabase, todayKey);
+  if (handledErr) {
     return new Response(
-      JSON.stringify({ ok: false, telegram: true, persistError: upErr.message }),
+      JSON.stringify({ ok: false, telegram: true, persistError: handledErr }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
