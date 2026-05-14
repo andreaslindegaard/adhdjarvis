@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 43;
+  const SW_SCRIPT_VERSION = 52;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -45,6 +45,10 @@
   const SMARTLINKS_KEY = 'endless-planner-smartlinks';
   const LAYOUT_KEY = 'endless-planner-layout';
   const STANDALONE_TODOS_KEY = 'endless-planner-standalone-todos';
+  const PUSHUP_WIDGET_KEY = 'endless-planner-pushup-widget';
+  const DEFAULT_PUSHUP_YEAR_GOAL = 10000;
+  const DEFAULT_PUSHUP_MONTH_GOAL = 800;
+  const PUSHUP_SET_WINDOW_MS = 5 * 1000;
 
   function loadNotes() {
     try {
@@ -91,6 +95,47 @@
     if (syncReady) SupabaseSync.save('standaloneTodos', standaloneTodos);
   }
 
+  function normalizePushupWidget(raw) {
+    const data = raw && typeof raw === 'object' ? raw : {};
+    const sets = Array.isArray(data.sets) ? data.sets : [];
+    const parsedYearGoal = Number.parseInt(data.yearGoal, 10);
+    const parsedMonthGoal = Number.parseInt(data.monthGoal, 10);
+    return {
+      enabled: !!data.enabled,
+      yearGoal: Number.isFinite(parsedYearGoal) ? Math.max(0, parsedYearGoal) : DEFAULT_PUSHUP_YEAR_GOAL,
+      monthGoal: Number.isFinite(parsedMonthGoal) ? Math.max(0, parsedMonthGoal) : DEFAULT_PUSHUP_MONTH_GOAL,
+      statsOpen: !!data.statsOpen,
+      sets: sets
+        .map((set) => {
+          const count = Math.max(0, Number.parseInt(set.count, 10) || 0);
+          const startedAt = set.startedAt || set.at || set.updatedAt || new Date().toISOString();
+          const updatedAt = set.updatedAt || startedAt;
+          return {
+            id: set.id || crypto.randomUUID(),
+            startedAt,
+            updatedAt,
+            count
+          };
+        })
+        .filter(set => set.count > 0),
+      lastRecord: data.lastRecord && typeof data.lastRecord === 'object' ? data.lastRecord : null
+    };
+  }
+
+  function loadPushupWidget() {
+    try {
+      return normalizePushupWidget(JSON.parse(localStorage.getItem(PUSHUP_WIDGET_KEY)));
+    } catch {
+      return normalizePushupWidget(null);
+    }
+  }
+
+  function savePushupWidget() {
+    pushupWidget = normalizePushupWidget(pushupWidget);
+    localStorage.setItem(PUSHUP_WIDGET_KEY, JSON.stringify(pushupWidget));
+    if (syncReady) SupabaseSync.save('pushupWidget', pushupWidget);
+  }
+
   const defaultSmartLinks = [
     {
       keywords: ['hairdresser', 'hairdressers', 'cut my hair', 'haircut', 'hair cut', 'fris\u00f8r', 'frisor'],
@@ -130,6 +175,9 @@
 
   let standaloneTodos = loadStandaloneTodos();
 
+  let pushupWidget = loadPushupWidget();
+  let pushupCountdownTimer = null;
+
   // recurring structure: [ { id, text, time, startDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
 
@@ -160,6 +208,145 @@
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+
+  function getISOWeekKey(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    return `${d.getUTCFullYear()}-W${String(getISOWeekNumber(date)).padStart(2, '0')}`;
+  }
+
+  function formatNumber(n) {
+    return new Intl.NumberFormat('da-DK').format(n || 0);
+  }
+
+  function getPushupSetDate(set) {
+    const raw = set.startedAt || set.updatedAt;
+    const d = raw ? new Date(raw) : new Date();
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+
+  function getLatestPushupSet() {
+    if (!pushupWidget.sets.length) return null;
+    return pushupWidget.sets.reduce((latest, set) => {
+      if (!latest) return set;
+      const latestTime = new Date(latest.updatedAt || latest.startedAt || 0).getTime();
+      const setTime = new Date(set.updatedAt || set.startedAt || 0).getTime();
+      return setTime > latestTime ? set : latest;
+    }, null);
+  }
+
+  function getActivePushupSet(now = new Date()) {
+    const latest = getLatestPushupSet();
+    if (!latest) return null;
+    const updatedAt = new Date(latest.updatedAt || latest.startedAt || 0);
+    if (Number.isNaN(updatedAt.getTime())) return null;
+    if (dateKey(updatedAt) !== dateKey(now)) return null;
+    return now - updatedAt <= PUSHUP_SET_WINDOW_MS ? latest : null;
+  }
+
+  function getPushupSetRemainingMs(set, now = new Date()) {
+    if (!set) return 0;
+    const updatedAt = new Date(set.updatedAt || set.startedAt || 0);
+    if (Number.isNaN(updatedAt.getTime())) return 0;
+    return Math.max(0, PUSHUP_SET_WINDOW_MS - (now.getTime() - updatedAt.getTime()));
+  }
+
+  function getPushupStats(now = new Date()) {
+    const dayTotals = new Map();
+    const weekTotals = new Map();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const yesterdayKey = addDaysToDateKey(dateKey(now), -1);
+    let todayTotal = 0;
+    let yesterdayTotal = 0;
+    let monthTotal = 0;
+    let yearTotal = 0;
+    let allTimeTotal = 0;
+    let bestSet = { count: 0, date: '' };
+
+    for (const set of pushupWidget.sets) {
+      const count = Math.max(0, Number.parseInt(set.count, 10) || 0);
+      if (!count) continue;
+      const setDate = getPushupSetDate(set);
+      const day = dateKey(setDate);
+      const week = getISOWeekKey(setDate);
+
+      dayTotals.set(day, (dayTotals.get(day) || 0) + count);
+      weekTotals.set(week, (weekTotals.get(week) || 0) + count);
+      allTimeTotal += count;
+      if (setDate.getFullYear() === currentYear) yearTotal += count;
+      if (setDate.getFullYear() === currentYear && setDate.getMonth() === currentMonth) monthTotal += count;
+      if (day === dateKey(now)) todayTotal += count;
+      if (day === yesterdayKey) yesterdayTotal += count;
+      if (count > bestSet.count) bestSet = { count, date: day };
+    }
+
+    let bestDay = { count: 0, key: '' };
+    for (const [key, count] of dayTotals.entries()) {
+      if (count > bestDay.count) bestDay = { count, key };
+    }
+
+    let bestWeek = { count: 0, key: '' };
+    for (const [key, count] of weekTotals.entries()) {
+      if (count > bestWeek.count) bestWeek = { count, key };
+    }
+
+    const currentSet = getActivePushupSet(now);
+    const monthGoal = Math.max(0, Number.parseInt(pushupWidget.monthGoal, 10) || 0);
+    const monthRemaining = Math.max(0, monthGoal - monthTotal);
+    const monthProgress = monthGoal > 0 ? Math.min(100, Math.round((monthTotal / monthGoal) * 100)) : 0;
+    const yearGoal = Math.max(0, Number.parseInt(pushupWidget.yearGoal, 10) || 0);
+    const yearRemaining = Math.max(0, yearGoal - yearTotal);
+    const yearProgress = yearGoal > 0 ? Math.min(100, Math.round((yearTotal / yearGoal) * 100)) : 0;
+
+    return {
+      todayTotal,
+      yesterdayTotal,
+      monthTotal,
+      yearTotal,
+      allTimeTotal,
+      bestSet,
+      bestDay,
+      bestWeek,
+      currentSetCount: currentSet ? currentSet.count : 0,
+      monthGoal,
+      monthRemaining,
+      monthProgress,
+      yearGoal,
+      yearRemaining,
+      yearProgress
+    };
+  }
+
+  function addPushupRep() {
+    const now = new Date();
+    const previousBestSet = getPushupStats(now).bestSet.count;
+    let set = getActivePushupSet(now);
+
+    if (!set) {
+      set = {
+        id: crypto.randomUUID(),
+        startedAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        count: 0
+      };
+      pushupWidget.sets.push(set);
+    }
+
+    set.count += 1;
+    set.updatedAt = now.toISOString();
+
+    if (set.count > previousBestSet) {
+      pushupWidget.lastRecord = {
+        type: 'set',
+        setId: set.id,
+        count: set.count,
+        at: now.toISOString()
+      };
+    }
+
+    savePushupWidget();
   }
 
   // ---- Danish holidays (helligdage) ----
@@ -706,29 +893,186 @@
     return `<div class="calendar-todo-list">${items.map(renderTodoPanelTask).join('')}</div>`;
   }
 
+  function formatPushupWeekLabel(key) {
+    const match = /^(\d{4})-W(\d{2})$/.exec(key || '');
+    if (!match) return key || 'No record yet';
+    return `Week ${Number(match[2])}, ${match[1]}`;
+  }
+
+  function renderPushupStat(label, value, detail) {
+    return `<div class="pushup-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(formatNumber(value))}</strong>
+      <small>${escapeHtml(detail || 'No record yet')}</small>
+    </div>`;
+  }
+
+  function renderPushupGoalBar(label, current, goal, progress, remaining, detail) {
+    const cappedProgress = Math.max(0, Math.min(100, progress || 0));
+    const complete = goal > 0 && current >= goal;
+    const remainingText = goal > 0
+      ? complete
+        ? 'Goal reached'
+        : `${formatNumber(remaining)} left`
+      : 'Set a goal in settings';
+
+    return `<div class="pushup-goal-bar">
+      <div class="pushup-goal-bar-top">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatNumber(current)} / ${formatNumber(goal)}</strong>
+      </div>
+      <div class="pushup-linear-progress" role="progressbar" aria-label="${escapeHtml(label)} progress" aria-valuenow="${cappedProgress}" aria-valuemin="0" aria-valuemax="100">
+        <span style="width: ${cappedProgress}%"></span>
+      </div>
+      <div class="pushup-goal-bar-bottom">
+        <span>${escapeHtml(detail)}</span>
+        <span>${escapeHtml(remainingText)}</span>
+      </div>
+    </div>`;
+  }
+
+  function renderPushupWidget() {
+    const now = new Date();
+    const stats = getPushupStats(now);
+    const activeSet = getActivePushupSet(now);
+    const lastRecordAt = pushupWidget.lastRecord?.at ? new Date(pushupWidget.lastRecord.at) : null;
+    const showSetRecord = !!(
+      activeSet &&
+      pushupWidget.lastRecord?.type === 'set' &&
+      pushupWidget.lastRecord?.setId === activeSet.id &&
+      lastRecordAt &&
+      !Number.isNaN(lastRecordAt.getTime()) &&
+      now - lastRecordAt < PUSHUP_SET_WINDOW_MS
+    );
+    const setRemainingMs = getPushupSetRemainingMs(activeSet, now);
+    const setRemainingRatio = Math.max(0, Math.min(100, Math.round((setRemainingMs / PUSHUP_SET_WINDOW_MS) * 100)));
+    const setExpiresAt = activeSet
+      ? new Date(activeSet.updatedAt || activeSet.startedAt || 0).getTime() + PUSHUP_SET_WINDOW_MS
+      : 0;
+    const statsOpen = !!pushupWidget.statsOpen;
+    const statsToggleLabel = statsOpen ? 'Skjul' : 'Vis';
+    const monthLabel = MONTHS[now.getMonth()];
+    const yearLabel = String(now.getFullYear());
+
+    return `<div class="pushup-widget">
+      <div class="pushup-main-row">
+        <div class="pushup-count-block">
+          <span>Today</span>
+          <strong>${formatNumber(stats.todayTotal)}</strong>
+          <small>I går: ${formatNumber(stats.yesterdayTotal)}</small>
+        </div>
+        <button type="button" class="pushup-add-btn" data-action="pushup-plus" title="Add push-up" aria-label="Add push-up">+</button>
+      </div>
+      ${activeSet ? `<div class="pushup-set-timer" data-expires-at="${setExpiresAt}">
+        <div class="pushup-set-timer-top">
+          <span>Sæt-timer</span>
+          <strong class="pushup-set-timer-value">${(setRemainingMs / 1000).toFixed(1)}s</strong>
+        </div>
+        <div class="pushup-countdown-track" aria-hidden="true">
+          <span class="pushup-countdown-fill" style="width: ${setRemainingRatio}%"></span>
+        </div>
+      </div>` : ''}
+      ${showSetRecord ? `<div class="pushup-record-banner">New max record: ${formatNumber(activeSet.count)} in a row</div>` : ''}
+      <div class="pushup-stats-panel${statsOpen ? ' is-open' : ''}">
+        <button type="button" class="pushup-stats-toggle" data-action="pushup-toggle-stats" aria-expanded="${statsOpen}">
+          <span>Statistik</span>
+          <strong>${statsToggleLabel}</strong>
+        </button>
+        ${statsOpen ? `<div class="pushup-stat-grid">
+          ${renderPushupStat('Best day', stats.bestDay.count, stats.bestDay.key ? formatTodoPanelDate(stats.bestDay.key) : '')}
+          ${renderPushupStat('Best week', stats.bestWeek.count, stats.bestWeek.key ? formatPushupWeekLabel(stats.bestWeek.key) : '')}
+          ${renderPushupStat('Best streak', stats.bestSet.count, stats.bestSet.date ? formatTodoPanelDate(stats.bestSet.date) : '')}
+          ${renderPushupStat('Current streak', stats.currentSetCount, activeSet ? 'Active now' : 'Resting')}
+        </div>` : ''}
+      </div>
+      <div class="pushup-goals-row">
+        ${renderPushupGoalBar('Monthly goal', stats.monthTotal, stats.monthGoal, stats.monthProgress, stats.monthRemaining, monthLabel)}
+        ${renderPushupGoalBar('Yearly goal', stats.yearTotal, stats.yearGoal, stats.yearProgress, stats.yearRemaining, yearLabel)}
+      </div>
+    </div>`;
+  }
+
+  function renderWidgetsPanel() {
+    const checked = pushupWidget.enabled ? 'checked' : '';
+    return `<section class="calendar-widgets-panel" aria-label="Widgets">
+      <div class="calendar-widgets-header">
+        <h2>Widgets</h2>
+        <span class="calendar-todo-count">${pushupWidget.enabled ? 1 : 0}</span>
+      </div>
+      <div class="calendar-widget-section">
+        <label class="calendar-widget-toggle">
+          <span>Push-up counter</span>
+          <input type="checkbox" class="pushup-widget-toggle" ${checked} aria-label="Toggle push-up counter">
+          <span class="calendar-widget-switch" aria-hidden="true"></span>
+        </label>
+        ${pushupWidget.enabled ? renderPushupWidget() : ''}
+      </div>
+    </section>`;
+  }
+
+  function stopPushupCountdownTimer() {
+    if (pushupCountdownTimer) {
+      clearInterval(pushupCountdownTimer);
+      pushupCountdownTimer = null;
+    }
+  }
+
+  function schedulePushupCountdownTimer() {
+    stopPushupCountdownTimer();
+    if (!calendarTodoPanel) return;
+
+    const timer = calendarTodoPanel.querySelector('.pushup-set-timer[data-expires-at]');
+    if (!timer) return;
+
+    const valueEl = timer.querySelector('.pushup-set-timer-value');
+    const fillEl = timer.querySelector('.pushup-countdown-fill');
+    const expiresAt = Number.parseInt(timer.dataset.expiresAt, 10);
+    if (!Number.isFinite(expiresAt)) return;
+
+    const tick = () => {
+      const remainingMs = Math.max(0, expiresAt - Date.now());
+      const seconds = (remainingMs / 1000).toFixed(1);
+      const ratio = Math.max(0, Math.min(100, (remainingMs / PUSHUP_SET_WINDOW_MS) * 100));
+
+      if (valueEl) valueEl.textContent = `${seconds}s`;
+      if (fillEl) fillEl.style.width = `${ratio}%`;
+
+      if (remainingMs <= 0) {
+        stopPushupCountdownTimer();
+        renderTodoPanel();
+      }
+    };
+
+    tick();
+    pushupCountdownTimer = setInterval(tick, 100);
+  }
+
   function renderTodoPanel(options = {}) {
     if (!calendarTodoPanel) return;
     const tasks = collectTodoPanelTasks();
     const activeTasks = tasks.filter(task => !task.done);
     const completedTasks = tasks.filter(task => task.done);
 
-    calendarTodoPanel.innerHTML = `<div class="calendar-todo-header">
-      <h2>To-do list</h2>
-      <span class="calendar-todo-count">${activeTasks.length}</span>
+    calendarTodoPanel.innerHTML = `<div class="calendar-todo-card">
+      <div class="calendar-todo-header">
+        <h2>To-do list</h2>
+        <span class="calendar-todo-count">${activeTasks.length}</span>
+      </div>
+      <section class="calendar-todo-section">
+        <div class="calendar-todo-section-header"><span>Active</span><span>${activeTasks.length}</span></div>
+        <form class="calendar-todo-add-form" id="calendarTodoAddForm">
+          <span class="calendar-todo-draft-checkbox" aria-hidden="true"></span>
+          <input type="text" class="calendar-todo-add-input" id="calendarTodoAddInput" placeholder="Add a to-do..." autocomplete="off" spellcheck="false">
+          <span aria-hidden="true"></span>
+        </form>
+        ${renderTodoPanelList(activeTasks, 'No active tasks.')}
+      </section>
+      <section class="calendar-todo-section">
+        <div class="calendar-todo-section-header"><span>Completed</span><span>${completedTasks.length}</span></div>
+        ${renderTodoPanelList(completedTasks, 'Nothing completed yet.')}
+      </section>
     </div>
-    <section class="calendar-todo-section">
-      <div class="calendar-todo-section-header"><span>Active</span><span>${activeTasks.length}</span></div>
-      <form class="calendar-todo-add-form" id="calendarTodoAddForm">
-        <span class="calendar-todo-draft-checkbox" aria-hidden="true"></span>
-        <input type="text" class="calendar-todo-add-input" id="calendarTodoAddInput" placeholder="Add a to-do..." autocomplete="off" spellcheck="false">
-        <span aria-hidden="true"></span>
-      </form>
-      ${renderTodoPanelList(activeTasks, 'No active tasks.')}
-    </section>
-    <section class="calendar-todo-section">
-      <div class="calendar-todo-section-header"><span>Completed</span><span>${completedTasks.length}</span></div>
-      ${renderTodoPanelList(completedTasks, 'Nothing completed yet.')}
-    </section>`;
+    ${renderWidgetsPanel()}`;
 
     if (options.focusAddInput) {
       requestAnimationFrame(() => {
@@ -736,6 +1080,8 @@
         if (input) input.focus();
       });
     }
+
+    schedulePushupCountdownTimer();
   }
 
   function render() {
@@ -970,6 +1316,21 @@
     });
 
     calendarTodoPanel.addEventListener('click', (e) => {
+      const pushupStatsToggle = e.target.closest('[data-action="pushup-toggle-stats"]');
+      if (pushupStatsToggle) {
+        pushupWidget.statsOpen = !pushupWidget.statsOpen;
+        savePushupWidget();
+        renderTodoPanel();
+        return;
+      }
+
+      const pushupAddBtn = e.target.closest('[data-action="pushup-plus"]');
+      if (pushupAddBtn) {
+        addPushupRep();
+        renderTodoPanel();
+        return;
+      }
+
       const deleteBtn = e.target.closest('[data-action="delete-todo"]');
       if (!deleteBtn) return;
 
@@ -980,6 +1341,14 @@
     });
 
     calendarTodoPanel.addEventListener('change', (e) => {
+      const pushupToggle = e.target.closest('.pushup-widget-toggle');
+      if (pushupToggle) {
+        pushupWidget.enabled = pushupToggle.checked;
+        savePushupWidget();
+        renderTodoPanel();
+        return;
+      }
+
       const target = e.target.closest('.calendar-todo-checkbox');
       if (!target) return;
 
@@ -2413,7 +2782,7 @@
 
   // ---- Export ----
   document.getElementById('exportBtn').addEventListener('click', () => {
-    const data = JSON.stringify({ notes, recurring, standaloneTodos, notebook }, null, 2);
+    const data = JSON.stringify({ notes, recurring, standaloneTodos, pushupWidget, notebook }, null, 2);
     document.getElementById('modalTitle').textContent = 'Export Data';
     document.getElementById('modalTextarea').value = data;
     document.getElementById('modalTextarea').readOnly = true;
@@ -2438,6 +2807,7 @@
         const importedNotes = imported.notes || imported;
         const importedRecurring = imported.recurring || [];
         const importedStandaloneTodos = Array.isArray(imported.standaloneTodos) ? imported.standaloneTodos : [];
+        const importedPushupWidget = imported.pushupWidget ? normalizePushupWidget(imported.pushupWidget) : null;
         const importedNotebook = imported.notebook || null;
 
         for (const [date, dayNotes] of Object.entries(importedNotes)) {
@@ -2458,6 +2828,26 @@
           if (todo && todo.id && !standaloneTodos.find(t => t.id === todo.id)) {
             standaloneTodos.push(todo);
           }
+        }
+        if (importedPushupWidget) {
+          const existingPushupSetIds = new Set(pushupWidget.sets.map(set => set.id));
+          pushupWidget.enabled = importedPushupWidget.enabled;
+          pushupWidget.yearGoal = importedPushupWidget.yearGoal;
+          pushupWidget.monthGoal = importedPushupWidget.monthGoal;
+          for (const set of importedPushupWidget.sets) {
+            if (!existingPushupSetIds.has(set.id)) {
+              pushupWidget.sets.push(set);
+              existingPushupSetIds.add(set.id);
+            }
+          }
+          if (importedPushupWidget.lastRecord?.at) {
+            const importedRecordTime = new Date(importedPushupWidget.lastRecord.at).getTime();
+            const currentRecordTime = pushupWidget.lastRecord?.at ? new Date(pushupWidget.lastRecord.at).getTime() : 0;
+            if (!pushupWidget.lastRecord || importedRecordTime > currentRecordTime) {
+              pushupWidget.lastRecord = importedPushupWidget.lastRecord;
+            }
+          }
+          savePushupWidget();
         }
         if (importedNotebook?.pages) {
           for (const page of importedNotebook.pages) {
@@ -3461,6 +3851,8 @@
     document.getElementById('morningBriefingToggle').checked = !!s.morningBriefing;
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
     document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
+    document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
+    document.getElementById('pushupYearGoalInput').value = String(pushupWidget.yearGoal ?? DEFAULT_PUSHUP_YEAR_GOAL);
 
     const statusEl = document.getElementById('browserNotifStatus');
     if ('Notification' in window) {
@@ -3529,6 +3921,10 @@
         : ''
     };
     saveNotifSettings(s);
+    pushupWidget.monthGoal = Math.max(0, parseInt(document.getElementById('pushupMonthGoalInput').value, 10) || 0);
+    pushupWidget.yearGoal = Math.max(0, parseInt(document.getElementById('pushupYearGoalInput').value, 10) || 0);
+    savePushupWidget();
+    renderTodoPanel();
     document.getElementById('notifModalOverlay').classList.remove('active');
   });
 
@@ -3567,6 +3963,10 @@
     const viewTabsEl = document.getElementById('viewTabs');
     const stickyBase = getStickyBaseOffset();
     const todoPanel = document.getElementById('calendarTodoPanel');
+    if (todoPanel) {
+      todoPanel.style.top = '';
+      todoPanel.style.maxHeight = '';
+    }
 
     if (mobileSearchRow) {
       mobileSearchRow.style.top = topbarH + 'px';
@@ -3649,6 +4049,11 @@
       localStorage.setItem(STANDALONE_TODOS_KEY, JSON.stringify(standaloneTodos));
       return true;
     }
+    if (key === 'pushupWidget') {
+      pushupWidget = normalizePushupWidget(remote);
+      localStorage.setItem(PUSHUP_WIDGET_KEY, JSON.stringify(pushupWidget));
+      return true;
+    }
     if (key === 'notebook') {
       notebook = remote;
       if (!notebook.activePageId && notebook.pages?.length) {
@@ -3688,7 +4093,7 @@
 
   async function hydratePlannerDataFromServer() {
     if (typeof SupabaseSync.fetchKey !== 'function') return;
-    const keys = ['notes', 'recurring', 'standaloneTodos', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
+    const keys = ['notes', 'recurring', 'standaloneTodos', 'pushupWidget', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
     for (const key of keys) {
       try {
         const row = await SupabaseSync.fetchKey(key);
@@ -3752,6 +4157,11 @@
       if (!isUserEditing()) renderTodoPanel();
     }));
 
+    syncListeners.push(SupabaseSync.listen('pushupWidget', (remote, meta) => {
+      if (!applyRemotePayload('pushupWidget', remote, meta)) return;
+      if (!isUserEditing()) renderTodoPanel();
+    }));
+
     syncListeners.push(SupabaseSync.listen('notebook', (remote, meta) => {
       if (!applyRemotePayload('notebook', remote, meta)) return;
       if (!isUserEditing()) renderNotebook();
@@ -3799,6 +4209,7 @@
         notes,
         recurring,
         standaloneTodos,
+        pushupWidget,
         notebook,
         smartLinks,
         notifSettings: loadNotifSettings()

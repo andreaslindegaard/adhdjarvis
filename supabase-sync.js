@@ -101,7 +101,7 @@
     },
 
     migrateFromLocalStorage(localData) {
-      const keys = ['notes', 'recurring', 'standaloneTodos', 'notebook', 'smartLinks', 'notifSettings'];
+      const keys = ['notes', 'recurring', 'standaloneTodos', 'pushupWidget', 'notebook', 'smartLinks', 'notifSettings'];
       return Promise.all(
         keys.map((key) => {
           if (localData[key] === undefined || localData[key] === null) {
