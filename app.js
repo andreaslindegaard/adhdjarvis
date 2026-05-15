@@ -300,6 +300,19 @@
     const yearGoal = Math.max(0, Number.parseInt(pushupWidget.yearGoal, 10) || 0);
     const yearRemaining = Math.max(0, yearGoal - yearTotal);
     const yearProgress = yearGoal > 0 ? Math.min(100, Math.round((yearTotal / yearGoal) * 100)) : 0;
+    const yearStartUtc = Date.UTC(currentYear, 0, 1);
+    const nextYearUtc = Date.UTC(currentYear + 1, 0, 1);
+    const todayUtc = Date.UTC(currentYear, now.getMonth(), now.getDate());
+    const daysInYear = Math.round((nextYearUtc - yearStartUtc) / 86400000);
+    const dayOfYear = Math.floor((todayUtc - yearStartUtc) / 86400000) + 1;
+    const daysRemainingInYear = Math.max(1, daysInYear - dayOfYear + 1);
+    const yearExpectedByToday = yearGoal > 0
+      ? Math.round((yearGoal * dayOfYear) / daysInYear)
+      : 0;
+    const yearPaceDelta = yearGoal > 0 ? yearTotal - yearExpectedByToday : 0;
+    const yearDailyNeeded = yearGoal > 0 && yearRemaining > 0
+      ? yearRemaining / daysRemainingInYear
+      : 0;
 
     return {
       todayTotal,
@@ -316,7 +329,10 @@
       monthProgress,
       yearGoal,
       yearRemaining,
-      yearProgress
+      yearProgress,
+      yearPaceDelta,
+      yearDailyNeeded,
+      daysRemainingInYear
     };
   }
 
@@ -942,6 +958,64 @@
     </div>`;
   }
 
+  function formatPushupDailyPace(value) {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    if (value < 1) return '< 1';
+    return new Intl.NumberFormat('da-DK', {
+      maximumFractionDigits: value < 10 ? 1 : 0
+    }).format(value);
+  }
+
+  function renderPushupYearPace(stats) {
+    if (stats.yearGoal <= 0) {
+      return `<div class="pushup-year-pace">
+        <div class="pushup-year-pace-top">
+          <span>Årsmål tempo</span>
+          <strong>Intet mål</strong>
+        </div>
+        <div class="pushup-year-pace-main">
+          <strong>Sæt et årsmål</strong>
+          <span>i settings</span>
+        </div>
+      </div>`;
+    }
+
+    const goalReached = stats.yearTotal >= stats.yearGoal;
+    const paceClass = goalReached
+      ? ' is-complete'
+      : stats.yearPaceDelta >= 0
+        ? ' is-on-track'
+        : ' is-behind';
+    const statusText = goalReached
+      ? 'Målet er ramt'
+      : stats.yearPaceDelta >= 0
+        ? 'On track'
+        : 'Bagud';
+    const delta = Math.abs(stats.yearPaceDelta);
+    const paceText = goalReached
+      ? `${formatNumber(stats.yearTotal - stats.yearGoal)} over årsmålet`
+      : stats.yearPaceDelta > 0
+        ? `${formatNumber(delta)} foran tempoet`
+        : stats.yearPaceDelta < 0
+          ? `${formatNumber(delta)} bagud ift. tempoet`
+          : 'Lige på tempoet';
+    const dailyText = goalReached
+      ? '0'
+      : formatPushupDailyPace(stats.yearDailyNeeded);
+
+    return `<div class="pushup-year-pace${paceClass}">
+      <div class="pushup-year-pace-top">
+        <span>Årsmål tempo</span>
+        <strong>${escapeHtml(statusText)}</strong>
+      </div>
+      <div class="pushup-year-pace-main">
+        <strong>${escapeHtml(dailyText)} om dagen</strong>
+        <span>resten af året</span>
+      </div>
+      <small>${escapeHtml(paceText)}</small>
+    </div>`;
+  }
+
   function renderPushupGoalBar(label, current, goal, progress, remaining, detail) {
     const cappedProgress = Math.max(0, Math.min(100, progress || 0));
     const complete = goal > 0 && current >= goal;
@@ -1020,7 +1094,8 @@
           ${renderPushupStat('Best week', stats.bestWeek.count, stats.bestWeek.key ? formatPushupWeekLabel(stats.bestWeek.key) : '')}
           ${renderPushupStat('Best streak', stats.bestSet.count, stats.bestSet.date ? formatTodoPanelDate(stats.bestSet.date) : '')}
           ${renderPushupStat('Current streak', stats.currentSetCount, activeSet ? 'Active now' : 'Resting')}
-        </div>` : ''}
+        </div>
+        ${renderPushupYearPace(stats)}` : ''}
       </div>
       <div class="pushup-goals-row">
         ${renderPushupGoalBar('Monthly goal', stats.monthTotal, stats.monthGoal, stats.monthProgress, stats.monthRemaining, monthLabel)}

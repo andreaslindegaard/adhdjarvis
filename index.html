@@ -815,6 +815,74 @@
       overflow-wrap: anywhere;
     }
 
+    .pushup-year-pace {
+      border: 1px solid #d9e1d6;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.72);
+      padding: 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pushup-year-pace-top,
+    .pushup-year-pace-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .pushup-year-pace-top span {
+      color: var(--text-dim);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.35px;
+      text-transform: uppercase;
+    }
+
+    .pushup-year-pace-top strong {
+      flex-shrink: 0;
+      color: #527461;
+      font-size: 0.72rem;
+      font-weight: 850;
+      text-align: right;
+    }
+
+    .pushup-year-pace.is-behind .pushup-year-pace-top strong {
+      color: #b65c38;
+    }
+
+    .pushup-year-pace.is-complete .pushup-year-pace-top strong {
+      color: #866116;
+    }
+
+    .pushup-year-pace-main {
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .pushup-year-pace-main strong {
+      color: var(--text);
+      font-size: 0.96rem;
+      line-height: 1.1;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pushup-year-pace-main span,
+    .pushup-year-pace small {
+      color: var(--text-secondary);
+      font-size: 0.68rem;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .pushup-year-pace small {
+      display: block;
+      font-weight: 700;
+    }
+
     .pushup-goals-row {
       display: flex;
       flex-direction: column;
@@ -3483,7 +3551,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=79"></script>
+<script src="app.js?v=80"></script>
 
 </body>
 </html>
