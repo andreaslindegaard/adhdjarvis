@@ -174,6 +174,7 @@
   let notes = loadNotes();
 
   let standaloneTodos = loadStandaloneTodos();
+  let todoPanelCompletedExpanded = false;
 
   let pushupWidget = loadPushupWidget();
   let pushupCountdownTimer = null;
@@ -803,6 +804,23 @@
     return (a.text || a.sourceTitle || '').localeCompare((b.text || b.sourceTitle || ''), 'da');
   }
 
+  function getTodoPanelCompletedTime(task) {
+    const completedTime = Date.parse(task.completedAt || '');
+    if (Number.isFinite(completedTime)) return completedTime;
+
+    const dateTime = Date.parse(`${task.date || ''}T${task.time || '23:59'}`);
+    if (Number.isFinite(dateTime)) return dateTime;
+
+    const createdTime = Date.parse(task.createdAt || '');
+    return Number.isFinite(createdTime) ? createdTime : 0;
+  }
+
+  function compareCompletedTodoPanelTasks(a, b) {
+    const timeDiff = getTodoPanelCompletedTime(b) - getTodoPanelCompletedTime(a);
+    if (timeDiff !== 0) return timeDiff;
+    return compareTodoPanelTasks(a, b);
+  }
+
   function collectTodoPanelTasks() {
     const tasks = standaloneTodos.map(todo => ({
       kind: 'standalone',
@@ -830,7 +848,8 @@
               text: item.text || '',
               done: !!item.done,
               time: note.time || '',
-              sourceTitle: note.text || ''
+              sourceTitle: note.text || '',
+              completedAt: item.completedAt || ''
             });
           }
           continue;
@@ -845,7 +864,8 @@
             text: note.text || '',
             done: !!note.done,
             time: note.time || '',
-            sourceTitle: ''
+            sourceTitle: '',
+            completedAt: note.completedAt || ''
           });
         }
       }
@@ -857,6 +877,7 @@
     const checked = task.done ? 'checked' : '';
     const doneClass = task.done ? ' is-completed' : '';
     const itemAttr = task.itemId ? ` data-item-id="${escapeHtml(task.itemId)}"` : '';
+    const taskAttrs = ` data-kind="${escapeHtml(task.kind)}" data-date="${escapeHtml(task.date)}" data-id="${escapeHtml(task.id)}"${itemAttr}`;
     const deleteButton = task.kind === 'standalone'
       ? `<button type="button" class="calendar-todo-delete" data-action="delete-todo" data-id="${escapeHtml(task.id)}" title="Delete task" aria-label="Delete task">&times;</button>`
       : '';
@@ -876,10 +897,10 @@
         </div>`
       : '';
 
-    return `<div class="calendar-todo-item${doneClass}">
+    return `<div class="calendar-todo-item${doneClass}"${taskAttrs}>
       <input type="checkbox" class="calendar-todo-checkbox" ${checked} data-kind="${escapeHtml(task.kind)}" data-date="${escapeHtml(task.date)}" data-id="${escapeHtml(task.id)}"${itemAttr} aria-label="Toggle task">
       <div class="calendar-todo-content">
-        <div class="calendar-todo-text">${textHtml}</div>
+        <div class="calendar-todo-text" data-action="edit-todo" tabindex="0" title="Edit task">${textHtml}</div>
         ${metaHtml}
       </div>
       ${deleteButton}
@@ -891,6 +912,20 @@
       return `<div class="calendar-todo-empty">${emptyText}</div>`;
     }
     return `<div class="calendar-todo-list">${items.map(renderTodoPanelTask).join('')}</div>`;
+  }
+
+  function renderCompletedTodoPanel(completedTasks) {
+    const retainedTasks = completedTasks.slice(0, 10);
+    const visibleTasks = todoPanelCompletedExpanded
+      ? retainedTasks
+      : retainedTasks.slice(0, 3);
+    const toggleHtml = retainedTasks.length > 3
+      ? `<button type="button" class="calendar-todo-show-all" data-action="toggle-completed-todos" aria-expanded="${todoPanelCompletedExpanded}">
+          ${todoPanelCompletedExpanded ? 'Vis færre' : 'Vis alle'}
+        </button>`
+      : '';
+
+    return `${renderTodoPanelList(visibleTasks, 'Nothing completed yet.')}${toggleHtml}`;
   }
 
   function formatPushupWeekLabel(key) {
@@ -950,9 +985,11 @@
       ? new Date(activeSet.updatedAt || activeSet.startedAt || 0).getTime() + PUSHUP_SET_WINDOW_MS
       : 0;
     const statsOpen = !!pushupWidget.statsOpen;
-    const statsToggleLabel = statsOpen ? 'Skjul' : 'Vis';
     const monthLabel = MONTHS[now.getMonth()];
     const yearLabel = String(now.getFullYear());
+    const activeSetLabel = activeSet
+      ? `${formatNumber(activeSet.count)} push-up${activeSet.count === 1 ? '' : 's'}`
+      : '';
 
     return `<div class="pushup-widget">
       <div class="pushup-main-row">
@@ -965,8 +1002,8 @@
       </div>
       ${activeSet ? `<div class="pushup-set-timer" data-expires-at="${setExpiresAt}">
         <div class="pushup-set-timer-top">
-          <span>Sæt-timer</span>
-          <strong class="pushup-set-timer-value">${(setRemainingMs / 1000).toFixed(1)}s</strong>
+          <span>Current set</span>
+          <strong class="pushup-set-count" aria-live="polite">${escapeHtml(activeSetLabel)}</strong>
         </div>
         <div class="pushup-countdown-track" aria-hidden="true">
           <span class="pushup-countdown-fill" style="width: ${setRemainingRatio}%"></span>
@@ -974,9 +1011,9 @@
       </div>` : ''}
       ${showSetRecord ? `<div class="pushup-record-banner">New max record: ${formatNumber(activeSet.count)} in a row</div>` : ''}
       <div class="pushup-stats-panel${statsOpen ? ' is-open' : ''}">
-        <button type="button" class="pushup-stats-toggle" data-action="pushup-toggle-stats" aria-expanded="${statsOpen}">
+        <button type="button" class="pushup-stats-toggle" data-action="pushup-toggle-stats" aria-expanded="${statsOpen}" aria-label="${statsOpen ? 'Skjul statistik' : 'Vis statistik'}">
           <span>Statistik</span>
-          <strong>${statsToggleLabel}</strong>
+          <strong aria-hidden="true">▾</strong>
         </button>
         ${statsOpen ? `<div class="pushup-stat-grid">
           ${renderPushupStat('Best day', stats.bestDay.count, stats.bestDay.key ? formatTodoPanelDate(stats.bestDay.key) : '')}
@@ -997,7 +1034,6 @@
     return `<section class="calendar-widgets-panel" aria-label="Widgets">
       <div class="calendar-widgets-header">
         <h2>Widgets</h2>
-        <span class="calendar-todo-count">${pushupWidget.enabled ? 1 : 0}</span>
       </div>
       <div class="calendar-widget-section">
         <label class="calendar-widget-toggle">
@@ -1024,17 +1060,14 @@
     const timer = calendarTodoPanel.querySelector('.pushup-set-timer[data-expires-at]');
     if (!timer) return;
 
-    const valueEl = timer.querySelector('.pushup-set-timer-value');
     const fillEl = timer.querySelector('.pushup-countdown-fill');
     const expiresAt = Number.parseInt(timer.dataset.expiresAt, 10);
     if (!Number.isFinite(expiresAt)) return;
 
     const tick = () => {
       const remainingMs = Math.max(0, expiresAt - Date.now());
-      const seconds = (remainingMs / 1000).toFixed(1);
       const ratio = Math.max(0, Math.min(100, (remainingMs / PUSHUP_SET_WINDOW_MS) * 100));
 
-      if (valueEl) valueEl.textContent = `${seconds}s`;
       if (fillEl) fillEl.style.width = `${ratio}%`;
 
       if (remainingMs <= 0) {
@@ -1051,12 +1084,13 @@
     if (!calendarTodoPanel) return;
     const tasks = collectTodoPanelTasks();
     const activeTasks = tasks.filter(task => !task.done);
-    const completedTasks = tasks.filter(task => task.done);
+    const completedTasks = tasks.filter(task => task.done).sort(compareCompletedTodoPanelTasks);
+    const completedPanelCount = Math.min(completedTasks.length, 10);
+    if (completedPanelCount <= 3) todoPanelCompletedExpanded = false;
 
     calendarTodoPanel.innerHTML = `<div class="calendar-todo-card">
       <div class="calendar-todo-header">
         <h2>To-do list</h2>
-        <span class="calendar-todo-count">${activeTasks.length}</span>
       </div>
       <section class="calendar-todo-section">
         <div class="calendar-todo-section-header"><span>Active</span><span>${activeTasks.length}</span></div>
@@ -1068,8 +1102,8 @@
         ${renderTodoPanelList(activeTasks, 'No active tasks.')}
       </section>
       <section class="calendar-todo-section">
-        <div class="calendar-todo-section-header"><span>Completed</span><span>${completedTasks.length}</span></div>
-        ${renderTodoPanelList(completedTasks, 'Nothing completed yet.')}
+        <div class="calendar-todo-section-header"><span>Completed</span><span>${completedPanelCount}</span></div>
+        ${renderCompletedTodoPanel(completedTasks)}
       </section>
     </div>
     ${renderWidgetsPanel()}`;
@@ -1300,6 +1334,117 @@
       return true;
     }
 
+    function getTodoPanelTaskText(kind, date, id, itemId) {
+      if (kind === 'standalone') {
+        return standaloneTodos.find(item => item.id === id)?.text || '';
+      }
+
+      const note = (notes[date] || []).find(n => n.id === id);
+      if (!note) return '';
+
+      if (kind === 'smart') {
+        return Array.isArray(note.listItems)
+          ? note.listItems.find(item => item.id === itemId)?.text || ''
+          : '';
+      }
+
+      return note.text || '';
+    }
+
+    function saveTodoPanelTaskText(kind, date, id, itemId, nextText) {
+      const text = applySmartLinks(nextText.trim());
+      if (!text) {
+        renderTodoPanel();
+        return;
+      }
+
+      if (kind === 'standalone') {
+        const todo = standaloneTodos.find(item => item.id === id);
+        if (!todo) {
+          renderTodoPanel();
+          return;
+        }
+        todo.text = text;
+        saveStandaloneTodos();
+        renderTodoPanel();
+        return;
+      }
+
+      const dayNotes = notes[date] || [];
+      const note = dayNotes.find(n => n.id === id);
+      if (!note) {
+        renderTodoPanel();
+        return;
+      }
+
+      if (kind === 'smart') {
+        const item = Array.isArray(note.listItems)
+          ? note.listItems.find(li => li.id === itemId)
+          : null;
+        if (!item) {
+          renderTodoPanel();
+          return;
+        }
+        item.text = text;
+      } else {
+        note.text = text;
+        const { time } = parseTimeFromText(nextText);
+        if (time) note.time = time;
+        notes[date] = sortNotesByTime(notes[date]);
+      }
+
+      saveNotes(notes);
+      render();
+    }
+
+    function beginTodoPanelTaskEdit(textEl) {
+      const item = textEl.closest('.calendar-todo-item');
+      if (!item || item.querySelector('.calendar-todo-edit-input')) return;
+
+      const { kind, date, id, itemId } = item.dataset;
+      const currentText = getTodoPanelTaskText(kind, date, id, itemId);
+      const textarea = document.createElement('textarea');
+      textarea.className = 'calendar-todo-edit-input';
+      textarea.rows = 1;
+      textarea.spellcheck = false;
+      textarea.value = currentText;
+
+      textEl.classList.add('is-editing');
+      textEl.replaceChildren(textarea);
+
+      const resize = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+      };
+      resize();
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+      let closed = false;
+      function finish(commit) {
+        if (closed) return;
+        closed = true;
+        if (commit) {
+          saveTodoPanelTaskText(kind, date, id, itemId, textarea.value);
+        } else {
+          renderTodoPanel();
+        }
+      }
+
+      textarea.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && !ev.shiftKey) {
+          ev.preventDefault();
+          finish(true);
+        }
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          finish(false);
+        }
+      });
+      textarea.addEventListener('input', resize);
+      textarea.addEventListener('blur', () => finish(true));
+    }
+
     calendarTodoPanel.addEventListener('submit', (e) => {
       const form = e.target.closest('#calendarTodoAddForm');
       if (!form) return;
@@ -1310,9 +1455,19 @@
 
     calendarTodoPanel.addEventListener('keydown', (e) => {
       const input = e.target.closest('#calendarTodoAddInput');
-      if (!input || e.key !== 'Enter' || e.isComposing) return;
+      if (input) {
+        if (e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        addStandaloneTodoFromInput(input);
+        return;
+      }
+
+      if (e.target.closest('.calendar-todo-edit-input')) return;
+
+      const textEl = e.target.closest('[data-action="edit-todo"]');
+      if (!textEl || (e.key !== 'Enter' && e.key !== ' ')) return;
       e.preventDefault();
-      addStandaloneTodoFromInput(input);
+      beginTodoPanelTaskEdit(textEl);
     });
 
     calendarTodoPanel.addEventListener('click', (e) => {
@@ -1324,10 +1479,23 @@
         return;
       }
 
+      const completedToggle = e.target.closest('[data-action="toggle-completed-todos"]');
+      if (completedToggle) {
+        todoPanelCompletedExpanded = !todoPanelCompletedExpanded;
+        renderTodoPanel();
+        return;
+      }
+
       const pushupAddBtn = e.target.closest('[data-action="pushup-plus"]');
       if (pushupAddBtn) {
         addPushupRep();
         renderTodoPanel();
+        return;
+      }
+
+      const todoText = e.target.closest('[data-action="edit-todo"]');
+      if (todoText && !e.target.closest('a')) {
+        beginTodoPanelTaskEdit(todoText);
         return;
       }
 
@@ -1374,13 +1542,30 @@
           : null;
         if (!item) return;
         item.done = target.checked;
+        item.completedAt = target.checked ? new Date().toISOString() : null;
       } else {
         note.done = target.checked;
+        note.completedAt = target.checked ? new Date().toISOString() : null;
       }
 
       saveNotes(notes);
       render();
     });
+
+    document.addEventListener('wheel', (e) => {
+      if (layoutState.mode !== 'tabs') return;
+
+      const panelRect = calendarTodoPanel.getBoundingClientRect();
+      const viewTabsEl = document.getElementById('viewTabs');
+      const tabsRect = viewTabsEl ? viewTabsEl.getBoundingClientRect() : null;
+      const rightSideStarts = panelRect.left;
+      const rightSideTop = tabsRect ? tabsRect.bottom : panelRect.top;
+      if (e.clientX < rightSideStarts || e.clientY < rightSideTop) return;
+
+      e.preventDefault();
+      calendarTodoPanel.scrollTop += e.deltaY;
+      calendarTodoPanel.scrollLeft += e.deltaX;
+    }, { capture: true, passive: false });
   }
 
   // Event delegation
@@ -1449,6 +1634,7 @@
         const item = note.listItems.find(li => li.id === itemId);
         if (item) {
           item.done = target.checked;
+          item.completedAt = target.checked ? new Date().toISOString() : null;
           saveNotes(notes);
           render();
         }
@@ -1475,6 +1661,7 @@
       const note = dayNotes.find(n => n.id === id);
       if (note) {
         note.done = target.checked;
+        note.completedAt = target.checked ? new Date().toISOString() : null;
         saveNotes(notes);
         render();
       }
