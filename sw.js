@@ -1,4 +1,4 @@
-const CACHE_NAME = 'adhd-jarvis-v52';
+const CACHE_NAME = 'adhd-jarvis-v54';
 
 // Install: skip waiting immediately to take over
 self.addEventListener('install', (event) => {
@@ -35,4 +35,23 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(fetch(event.request));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification?.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            client.navigate(targetUrl).catch(() => {});
+            return client.focus();
+          }
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+        return undefined;
+      })
+  );
 });

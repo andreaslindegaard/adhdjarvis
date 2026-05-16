@@ -118,11 +118,11 @@
       border-color: var(--accent-hover);
     }
 
-    .more-menu-wrap {
+    .settings-button-wrap {
       position: relative;
     }
 
-    .more-menu-btn {
+    .settings-button {
       display: flex !important;
       align-items: center;
       justify-content: center;
@@ -132,45 +132,9 @@
       color: var(--text-secondary);
     }
 
-    .more-menu-btn svg {
+    .settings-button svg {
       display: block;
       flex-shrink: 0;
-    }
-
-    .more-menu {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      box-shadow: var(--shadow-lg);
-      z-index: 150;
-      min-width: 160px;
-    }
-
-    .more-menu.hidden { display: none; }
-
-    .more-menu button {
-      background: none !important;
-      border: none !important;
-      box-shadow: none !important;
-      padding: 8px 14px !important;
-      text-align: left;
-      border-radius: var(--radius-sm) !important;
-      font-size: 0.84rem !important;
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: background 0.1s ease;
-    }
-
-    .more-menu button:hover {
-      background: var(--surface-hover) !important;
-      color: var(--text) !important;
     }
 
     .search-box {
@@ -1799,10 +1763,6 @@
       display: none;
     }
 
-    .mobile-only-menu-item {
-      display: none !important;
-    }
-
     .mobile-search-row {
       display: none;
       background: rgba(245, 240, 232, 0.95);
@@ -1885,16 +1845,12 @@
         color: var(--accent);
       }
 
-      .mobile-only-menu-item {
-        display: block !important;
-      }
-
       .today-btn {
         padding: 0 12px !important;
         font-size: 0.78rem !important;
       }
 
-      .more-menu-btn {
+      .settings-button {
         width: 34px !important;
         min-width: 34px;
         padding: 6px !important;
@@ -2157,6 +2113,422 @@
       margin-bottom: 14px;
       font-weight: 600;
       font-size: 1.05rem;
+    }
+
+    .settings-modal {
+      width: min(920px, calc(100vw - 32px));
+      max-width: none;
+      max-height: min(720px, calc(100vh - 32px));
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 22px 18px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .settings-header h3 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+
+    .settings-kicker {
+      margin-bottom: 2px;
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .settings-close {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .settings-close:hover {
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .settings-shell {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      flex: 1;
+    }
+
+    .settings-menu {
+      padding: 12px;
+      border-right: 1px solid var(--border-light);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .settings-menu-item {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.86rem;
+      font-weight: 600;
+      padding: 9px 10px;
+      text-align: left;
+      transition: all 0.12s ease;
+    }
+
+    .settings-menu-item:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .settings-menu-item.active {
+      background: var(--surface);
+      border-color: var(--border);
+      color: var(--accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .settings-content {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 20px 22px;
+    }
+
+    .settings-section {
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .settings-section.active {
+      display: flex;
+    }
+
+    .settings-section-head h4 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .settings-section-head p {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+
+    .settings-card {
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      padding: 14px;
+    }
+
+    .settings-card-title {
+      margin-bottom: 8px;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .settings-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.86rem;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .settings-toggle input {
+      width: 17px;
+      height: 17px;
+      margin-top: 1px;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+
+    .settings-note {
+      margin-top: 5px;
+      margin-left: 27px;
+      color: var(--text-dim);
+      font-size: 0.74rem;
+      line-height: 1.45;
+    }
+
+    .settings-field-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+      margin-left: 27px;
+    }
+
+    .settings-input,
+    .settings-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.84rem;
+      padding: 8px 10px;
+    }
+
+    .settings-input:focus,
+    .settings-select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .settings-inline-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      margin-left: 27px;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      flex-wrap: wrap;
+    }
+
+    .settings-inline-field .settings-input,
+    .settings-inline-field .settings-select {
+      width: auto;
+      min-width: 150px;
+    }
+
+    .settings-inline-field--plain {
+      margin-left: 0;
+      margin-top: 0;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .settings-field-label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      color: var(--text-secondary);
+      font-size: 0.74rem;
+      font-weight: 700;
+    }
+
+    .settings-help {
+      color: var(--text-dim);
+      font-size: 0.74rem;
+      line-height: 1.5;
+    }
+
+    .settings-help summary {
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    .settings-help ol {
+      margin: 7px 0 0 18px;
+    }
+
+    .settings-help code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.72rem;
+    }
+
+    .settings-test-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .settings-small-button {
+      align-self: flex-start;
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 7px 13px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 700;
+      font-family: inherit;
+    }
+
+    .settings-small-button:hover {
+      background: var(--accent-hover);
+    }
+
+    .settings-test-status {
+      color: var(--text-dim);
+      font-size: 0.74rem;
+    }
+
+    .settings-action-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .settings-action-row--plain {
+      margin-top: 0;
+    }
+
+    .settings-textarea {
+      width: 100%;
+      min-height: 150px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.76rem;
+      line-height: 1.45;
+      resize: vertical;
+    }
+
+    .settings-textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .settings-status {
+      color: var(--text-dim);
+      font-size: 0.74rem;
+    }
+
+    .settings-modal .modal-actions {
+      margin-top: 0;
+      padding: 14px 22px;
+      border-top: 1px solid var(--border-light);
+      background: var(--surface);
+    }
+
+    @media (max-width: 700px) {
+      .settings-modal {
+        width: calc(100vw - 20px);
+        max-height: calc(100dvh - 20px);
+      }
+
+      .settings-header {
+        padding: 16px;
+      }
+
+      .settings-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-menu {
+        border-right: none;
+        border-bottom: 1px solid var(--border-light);
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 10px;
+      }
+
+      .settings-menu-item {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+
+      .settings-content {
+        padding: 16px;
+      }
+
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-field-stack,
+      .settings-inline-field,
+      .settings-note {
+        margin-left: 0;
+      }
+
+      .settings-modal .modal-actions {
+        padding: 12px 16px;
+      }
+    }
+
+    .alarm-modal-overlay {
+      z-index: 260;
+      background: rgba(45, 43, 40, 0.58);
+    }
+
+    .alarm-modal {
+      max-width: 460px;
+      border-color: var(--accent);
+    }
+
+    .alarm-kicker {
+      margin-bottom: 6px;
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .alarm-when {
+      margin: -6px 0 14px;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    .alarm-message {
+      background: var(--bg);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 1rem;
+      line-height: 1.5;
+      min-height: 76px;
+      padding: 14px;
+      word-break: break-word;
+    }
+
+    @media (max-width: 600px) {
+      .alarm-modal {
+        width: calc(100% - 28px);
+        padding: 22px;
+      }
+
+      .alarm-message {
+        min-height: 96px;
+      }
+
+      .alarm-modal .modal-actions button {
+        min-height: 44px;
+      }
     }
 
     .modal textarea {
@@ -3349,18 +3721,10 @@
       </button>
       <button id="viewToggleBtn" class="view-toggle-btn" title="Switch view mode"></button>
       <button id="mobileSearchToggle" class="mobile-search-toggle" title="Search"><svg style="display:block;width:22px;height:22px;min-width:22px;min-height:22px" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/></svg></button>
-      <div class="more-menu-wrap">
-        <button type="button" id="moreMenuBtn" class="more-menu-btn" title="Settings" aria-label="Settings" aria-haspopup="true" aria-expanded="false">
+      <div class="settings-button-wrap">
+        <button type="button" id="settingsBtn" class="settings-button" title="Settings" aria-label="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
         </button>
-        <div class="more-menu hidden" id="moreMenu" role="menu" aria-label="Settings menu">
-          <button id="mobileCalPickerBtn" class="mobile-only-menu-item" role="menuitem">Month calendar</button>
-          <button id="exportBtn" role="menuitem">Export</button>
-          <button id="importBtn" role="menuitem">Import</button>
-          <button id="googleCalendarExportBtn" role="menuitem">Google Calendar</button>
-          <button id="smartLinksBtn" role="menuitem">Smart Links</button>
-          <button id="notificationsBtn" role="menuitem">Jarvis preferences</button>
-        </div>
       </div>
     </div>
     <span id="syncStatus" style="font-size:0.7rem; color:var(--text-dim);"></span>
@@ -3432,106 +3796,201 @@
     <aside class="calendar-todo-panel" id="calendarTodoPanel" aria-label="To-do list"></aside>
   </div>
 
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-      <h3 id="modalTitle">Export</h3>
-      <textarea id="modalTextarea" readonly></textarea>
+  <div class="modal-overlay" id="notifModalOverlay">
+    <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+      <div class="settings-header">
+        <div>
+          <p class="settings-kicker">Preferences</p>
+          <h3 id="settingsModalTitle">Settings</h3>
+        </div>
+        <button type="button" class="settings-close" id="notifModalCloseIcon" title="Close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="settings-shell">
+        <nav class="settings-menu" aria-label="Settings sections" role="tablist">
+          <button type="button" class="settings-menu-item active" data-settings-section="jarvis" role="tab" aria-selected="true" aria-controls="settingsPanelJarvis">Jarvis</button>
+          <button type="button" class="settings-menu-item" data-settings-section="reminders" role="tab" aria-selected="false" aria-controls="settingsPanelReminders">Reminders</button>
+          <button type="button" class="settings-menu-item" data-settings-section="calendar" role="tab" aria-selected="false" aria-controls="settingsPanelCalendar">Calendar</button>
+          <button type="button" class="settings-menu-item" data-settings-section="smartlinks" role="tab" aria-selected="false" aria-controls="settingsPanelSmartLinks">Smart Links</button>
+          <button type="button" class="settings-menu-item" data-settings-section="data" role="tab" aria-selected="false" aria-controls="settingsPanelData">Data</button>
+          <button type="button" class="settings-menu-item" data-settings-section="pushups" role="tab" aria-selected="false" aria-controls="settingsPanelPushups">Push-ups</button>
+        </nav>
+
+        <div class="settings-content">
+          <section class="settings-section active" id="settingsPanelJarvis" data-settings-panel="jarvis" role="tabpanel">
+            <div class="settings-section-head">
+              <h4>Jarvis preferences</h4>
+              <p>Morning briefings and Telegram messages.</p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-toggle">
+                <input type="checkbox" id="morningBriefingToggle">
+                <span>Morning briefing from Jarvis</span>
+              </label>
+              <div class="settings-inline-field">
+                <label for="morningBriefingTime">Send at</label>
+                <input class="settings-input" type="time" id="morningBriefingTime" value="06:30">
+              </div>
+              <p class="settings-note">Telegram can deliver this even when the app is closed if the scheduled Supabase briefing is active.</p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-toggle">
+                <input type="checkbox" id="telegramNotifToggle">
+                <span>Telegram messages</span>
+              </label>
+              <div class="settings-field-stack" id="telegramFields">
+                <input class="settings-input" type="text" id="telegramBotToken" placeholder="Bot token (from @BotFather)">
+                <input class="settings-input" type="text" id="telegramChatId" placeholder="Chat ID (from @userinfobot)">
+                <details class="settings-help">
+                  <summary>Telegram setup</summary>
+                  <ol>
+                    <li>Open Telegram, search <strong>@BotFather</strong>, and send <code>/newbot</code>.</li>
+                    <li>Paste the bot token here.</li>
+                    <li>Search <strong>@userinfobot</strong> and send <code>/start</code> to get your Chat ID.</li>
+                    <li>Send any message to your new bot first so it can reply to you.</li>
+                  </ol>
+                </details>
+                <div class="settings-test-row">
+                  <button type="button" class="settings-small-button" id="telegramTestBtn">Send test message</button>
+                  <span class="settings-test-status" id="telegramTestStatus"></span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section" id="settingsPanelReminders" data-settings-panel="reminders" role="tabpanel" hidden>
+            <div class="settings-section-head">
+              <h4>Reminders</h4>
+              <p>Timed note alerts and phone alarm behavior.</p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-toggle">
+                <input type="checkbox" id="browserNotifToggle">
+                <span>Browser notifications</span>
+              </label>
+              <p class="settings-note" id="browserNotifStatus"></p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-toggle">
+                <input type="checkbox" id="alarmNotifToggle">
+                <span>Phone alarm delivery</span>
+              </label>
+              <p class="settings-note" id="alarmDeviceStatus">When this is on, reminders created here can ring on your phone; this desktop will stay silent.</p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-inline-field settings-inline-field--plain">
+                <span>Remind me</span>
+                <select class="settings-select" id="notifLeadTime">
+                  <option value="0">At the exact time</option>
+                  <option value="5">5 minutes before</option>
+                  <option value="10">10 minutes before</option>
+                  <option value="15" selected>15 minutes before</option>
+                  <option value="30">30 minutes before</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-section" id="settingsPanelCalendar" data-settings-panel="calendar" role="tabpanel" hidden>
+            <div class="settings-section-head">
+              <h4>Calendar</h4>
+              <p>Calendar view and external calendar handoff.</p>
+            </div>
+
+            <div class="settings-card">
+              <label class="settings-toggle">
+                <input type="checkbox" id="googleCalendarAutoSendToggle">
+                <span>Auto send events to Google Calendar</span>
+              </label>
+              <p class="settings-note">Opens Google Calendar when you create an event, ready to save.</p>
+            </div>
+
+            <div class="settings-card">
+              <h5 class="settings-card-title">Calendar actions</h5>
+              <div class="settings-action-row settings-action-row--plain">
+                <button type="button" class="settings-small-button" id="settingsMonthCalendarBtn">Month calendar</button>
+                <button type="button" class="settings-small-button" id="settingsGoogleCalendarExportBtn">Download Google Calendar file</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section" id="settingsPanelSmartLinks" data-settings-panel="smartlinks" role="tabpanel" hidden>
+            <div class="settings-section-head">
+              <h4>Smart Links</h4>
+              <p>Attach useful URLs automatically when notes match your keywords.</p>
+            </div>
+
+            <div class="smart-links-editor" id="settingsSmartLinksList"></div>
+            <button type="button" class="sl-add" id="settingsSmartLinksAddBtn">+ Add Smart Link</button>
+          </section>
+
+          <section class="settings-section" id="settingsPanelData" data-settings-panel="data" role="tabpanel" hidden>
+            <div class="settings-section-head">
+              <h4>Data</h4>
+              <p>Import or export planner data.</p>
+            </div>
+
+            <div class="settings-card">
+              <h5 class="settings-card-title">Export</h5>
+              <textarea class="settings-textarea" id="settingsExportTextarea" readonly></textarea>
+              <div class="settings-action-row">
+                <button type="button" class="settings-small-button" id="settingsCopyExportBtn">Copy export</button>
+                <span class="settings-status" id="settingsExportStatus"></span>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h5 class="settings-card-title">Import</h5>
+              <textarea class="settings-textarea" id="settingsImportTextarea" placeholder="Paste exported JSON here"></textarea>
+              <div class="settings-action-row">
+                <button type="button" class="settings-small-button" id="settingsImportBtn">Import data</button>
+                <span class="settings-status" id="settingsImportStatus"></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section" id="settingsPanelPushups" data-settings-panel="pushups" role="tabpanel" hidden>
+            <div class="settings-section-head">
+              <h4>Push-up goals</h4>
+              <p>Goal targets for the tracker in the to-do panel.</p>
+            </div>
+
+            <div class="settings-card">
+              <div class="settings-grid">
+                <label class="settings-field-label">
+                  Monthly goal
+                  <input class="settings-input" type="number" id="pushupMonthGoalInput" min="0" step="50">
+                </label>
+                <label class="settings-field-label">
+                  Yearly goal
+                  <input class="settings-input" type="number" id="pushupYearGoalInput" min="0" step="100">
+                </label>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <div class="modal-actions">
-        <button class="btn-secondary" id="modalClose">Close</button>
-        <button class="btn-primary" id="modalAction">Copy</button>
+        <button class="btn-secondary" id="notifModalClose">Close</button>
+        <button class="btn-primary" id="notifModalSave">Save</button>
       </div>
     </div>
   </div>
 
-  <div class="modal-overlay" id="notifModalOverlay">
-    <div class="modal" style="max-width: 480px;">
-      <h3>Jarvis preferences</h3>
-      <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">
-        Jarvis can notify you when a note&rsquo;s time is due. Browser notifications require this tab to be open; Telegram delivers to your phone regardless.
-      </p>
-
-      <div style="display:flex; flex-direction:column; gap:14px;">
-        <div>
-          <label style="font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="browserNotifToggle" style="accent-color:var(--accent); width:16px; height:16px;">
-            Browser notifications
-          </label>
-          <span id="browserNotifStatus" style="font-size:0.72rem; color:var(--text-dim); margin-left:24px;"></span>
-        </div>
-
-        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
-          <label style="font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="telegramNotifToggle" style="accent-color:var(--accent); width:16px; height:16px;">
-            Telegram notifications
-          </label>
-          <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;" id="telegramFields">
-            <input type="text" id="telegramBotToken" placeholder="Bot token (from @BotFather)" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-            <input type="text" id="telegramChatId" placeholder="Chat ID (from @userinfobot)" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-            <div style="font-size:0.7rem; color:var(--text-dim); line-height:1.5;">
-              <strong>Setup:</strong><br>
-              1. Open Telegram, search <strong>@BotFather</strong>, send <code>/newbot</code><br>
-              2. Copy the bot token and paste above<br>
-              3. Search <strong>@userinfobot</strong>, send <code>/start</code> to get your Chat ID<br>
-              4. <strong>Important:</strong> Send any message to your new bot first so it can reply to you
-            </div>
-            <button id="telegramTestBtn" style="align-self:flex-start; background:var(--accent); color:white; border:none; padding:6px 14px; border-radius:var(--radius-sm); cursor:pointer; font-size:0.78rem; font-weight:600; font-family:inherit;">Send test message</button>
-            <span id="telegramTestStatus" style="font-size:0.72rem; color:var(--text-dim);"></span>
-          </div>
-        </div>
-
-        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
-          <label style="font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="morningBriefingToggle" style="accent-color:var(--accent); width:16px; height:16px;">
-            Morning briefing from Jarvis
-          </label>
-          <div style="margin-top:6px; margin-left:24px; display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.78rem; color:var(--text-secondary);">Send at</label>
-            <input type="time" id="morningBriefingTime" value="06:30" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-          </div>
-          <div style="font-size:0.7rem; color:var(--text-dim); margin-top:4px; margin-left:24px; line-height:1.5;">
-            With cloud sync on, a <strong>scheduled job</strong> in Supabase can send this via Telegram at your chosen time even when the app is closed (see <code>supabase/functions/morning-brief</code>). Otherwise the brief only runs while this tab is open.
-          </div>
-        </div>
-
-        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
-          <label style="font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" id="googleCalendarAutoSendToggle" style="accent-color:var(--accent); width:16px; height:16px;">
-            Auto send events to Google Calendar
-          </label>
-          <div style="font-size:0.7rem; color:var(--text-dim); margin-top:4px; margin-left:24px; line-height:1.5;">
-            Opens Google Calendar when you create an event, ready to save.
-          </div>
-        </div>
-
-        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
-          <label style="font-size:0.82rem; font-weight:600;">Remind me</label>
-          <select id="notifLeadTime" style="margin-left:8px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-            <option value="0">At the exact time</option>
-            <option value="5">5 minutes before</option>
-            <option value="10">10 minutes before</option>
-            <option value="15" selected>15 minutes before</option>
-            <option value="30">30 minutes before</option>
-          </select>
-        </div>
-
-        <div style="border-top:1px solid var(--border-light); padding-top:14px;">
-          <label style="font-size:0.82rem; font-weight:600;">Push-up goals</label>
-          <div style="margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <label style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--text-secondary); font-weight:700;">
-              Monthly goal
-              <input type="number" id="pushupMonthGoalInput" min="0" step="50" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:7px 9px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-            </label>
-            <label style="display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--text-secondary); font-weight:700;">
-              Yearly goal
-              <input type="number" id="pushupYearGoalInput" min="0" step="100" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:7px 9px; border-radius:var(--radius-sm); font-size:0.82rem; font-family:inherit;">
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn-secondary" id="notifModalClose">Close</button>
-        <button class="btn-primary" id="notifModalSave">Save</button>
+  <div class="modal-overlay alarm-modal-overlay" id="alarmModalOverlay" role="dialog" aria-modal="true" aria-labelledby="alarmModalTitle">
+    <div class="modal alarm-modal">
+      <div class="alarm-kicker">Reminder</div>
+      <h3 id="alarmModalTitle">Jarvis alarm</h3>
+      <p class="alarm-when" id="alarmModalWhen">Reminder due</p>
+      <div class="alarm-message" id="alarmModalMessage" aria-live="assertive">Reminder due</div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="alarmModalDismiss">Stop alarm</button>
       </div>
     </div>
   </div>
@@ -3551,7 +4010,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=80"></script>
+<script src="app.js?v=85"></script>
 
 </body>
 </html>

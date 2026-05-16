@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 52;
+  const SW_SCRIPT_VERSION = 54;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -133,6 +133,7 @@
   function savePushupWidget() {
     pushupWidget = normalizePushupWidget(pushupWidget);
     localStorage.setItem(PUSHUP_WIDGET_KEY, JSON.stringify(pushupWidget));
+    pushupLocalWriteAt = Date.now();
     if (syncReady) SupabaseSync.save('pushupWidget', pushupWidget);
   }
 
@@ -178,6 +179,7 @@
 
   let pushupWidget = loadPushupWidget();
   let pushupCountdownTimer = null;
+  let pushupLocalWriteAt = 0;
 
   // recurring structure: [ { id, text, time, startDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
@@ -235,6 +237,39 @@
       const setTime = new Date(set.updatedAt || set.startedAt || 0).getTime();
       return setTime > latestTime ? set : latest;
     }, null);
+  }
+
+  function getPushupSetUpdatedTime(set) {
+    const time = new Date(set?.updatedAt || set?.startedAt || 0).getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  function getPushupRecordTime(record) {
+    const time = new Date(record?.at || 0).getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  function mergePushupWidgetData(localRaw, remoteRaw) {
+    const local = normalizePushupWidget(localRaw);
+    const remote = normalizePushupWidget(remoteRaw);
+    const setsById = new Map(remote.sets.map(set => [set.id, set]));
+
+    for (const localSet of local.sets) {
+      const remoteSet = setsById.get(localSet.id);
+      if (!remoteSet || getPushupSetUpdatedTime(localSet) > getPushupSetUpdatedTime(remoteSet)) {
+        setsById.set(localSet.id, localSet);
+      }
+    }
+
+    const localRecordTime = getPushupRecordTime(local.lastRecord);
+    const remoteRecordTime = getPushupRecordTime(remote.lastRecord);
+
+    return {
+      ...remote,
+      statsOpen: local.statsOpen,
+      sets: Array.from(setsById.values()).sort((a, b) => getPushupSetUpdatedTime(a) - getPushupSetUpdatedTime(b)),
+      lastRecord: localRecordTime > remoteRecordTime ? local.lastRecord : remote.lastRecord
+    };
   }
 
   function getActivePushupSet(now = new Date()) {
@@ -1121,6 +1156,31 @@
     </section>`;
   }
 
+  function renderWidgetsPanelInPlace() {
+    if (!calendarTodoPanel) return;
+    const panel = calendarTodoPanel.querySelector('.calendar-widgets-panel');
+    if (!panel) {
+      renderTodoPanel();
+      return;
+    }
+    panel.outerHTML = renderWidgetsPanel();
+    schedulePushupCountdownTimer();
+  }
+
+  function renderPushupWidgetInPlace() {
+    if (!calendarTodoPanel || !pushupWidget.enabled) {
+      renderWidgetsPanelInPlace();
+      return;
+    }
+    const widget = calendarTodoPanel.querySelector('.pushup-widget');
+    if (!widget) {
+      renderWidgetsPanelInPlace();
+      return;
+    }
+    widget.outerHTML = renderPushupWidget();
+    schedulePushupCountdownTimer();
+  }
+
   function stopPushupCountdownTimer() {
     if (pushupCountdownTimer) {
       clearInterval(pushupCountdownTimer);
@@ -1550,7 +1610,7 @@
       if (pushupStatsToggle) {
         pushupWidget.statsOpen = !pushupWidget.statsOpen;
         savePushupWidget();
-        renderTodoPanel();
+        renderPushupWidgetInPlace();
         return;
       }
 
@@ -1564,7 +1624,7 @@
       const pushupAddBtn = e.target.closest('[data-action="pushup-plus"]');
       if (pushupAddBtn) {
         addPushupRep();
-        renderTodoPanel();
+        renderPushupWidgetInPlace();
         return;
       }
 
@@ -1588,7 +1648,7 @@
       if (pushupToggle) {
         pushupWidget.enabled = pushupToggle.checked;
         savePushupWidget();
-        renderTodoPanel();
+        renderWidgetsPanelInPlace();
         return;
       }
 
@@ -3005,216 +3065,152 @@
     setTimeout(() => scrollCalendarToToday('smooth'), 50);
   });
 
-  // ---- More menu ----
-  const moreMenuBtn = document.getElementById('moreMenuBtn');
-  const moreMenu = document.getElementById('moreMenu');
-  if (moreMenuBtn && moreMenu) {
-    function setMoreMenuOpen(open) {
-      moreMenu.classList.toggle('hidden', !open);
-      moreMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // ---- Settings helpers ----
+  function getPlannerExportData() {
+    return JSON.stringify({ notes, recurring, standaloneTodos, pushupWidget, notebook, smartLinks }, null, 2);
+  }
+
+  function applyImportedPlannerData(imported) {
+    const importedNotes = imported.notes || imported;
+    const importedRecurring = imported.recurring || [];
+    const importedStandaloneTodos = Array.isArray(imported.standaloneTodos) ? imported.standaloneTodos : [];
+    const importedPushupWidget = imported.pushupWidget ? normalizePushupWidget(imported.pushupWidget) : null;
+    const importedNotebook = imported.notebook || null;
+    const importedSmartLinks = Array.isArray(imported.smartLinks) ? imported.smartLinks : null;
+
+    for (const [date, dayNotes] of Object.entries(importedNotes)) {
+      if (!Array.isArray(dayNotes)) continue;
+      if (!notes[date]) notes[date] = [];
+      for (const note of dayNotes) {
+        if (!notes[date].find(n => n.id === note.id)) {
+          notes[date].push(note);
+        }
+      }
     }
-    moreMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setMoreMenuOpen(moreMenu.classList.contains('hidden'));
-    });
-    document.addEventListener('click', (e) => {
-      if (!moreMenu.contains(e.target) && e.target !== moreMenuBtn) {
-        setMoreMenuOpen(false);
+
+    for (const rec of importedRecurring) {
+      if (!recurring.find(r => r.id === rec.id)) {
+        recurring.push(rec);
       }
-    });
-    moreMenu.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', () => setMoreMenuOpen(false));
-    });
-  }
-
-  // ---- Mobile more-menu items (calendar + view toggle) ----
-  const mobileCalBtn = document.getElementById('mobileCalPickerBtn');
-  if (mobileCalBtn) {
-    mobileCalBtn.addEventListener('click', () => openCalPicker());
-  }
-
-  const mobileViewBtn = document.getElementById('mobileViewToggleBtn');
-  if (mobileViewBtn) {
-    mobileViewBtn.addEventListener('click', () => {
-      layoutState.mode = layoutState.mode === 'split' ? 'tabs' : 'split';
-      saveLayout();
-      applyLayout();
-    });
-  }
-
-  // ---- Export ----
-  document.getElementById('exportBtn').addEventListener('click', () => {
-    const data = JSON.stringify({ notes, recurring, standaloneTodos, pushupWidget, notebook }, null, 2);
-    document.getElementById('modalTitle').textContent = 'Export Data';
-    document.getElementById('modalTextarea').value = data;
-    document.getElementById('modalTextarea').readOnly = true;
-    document.getElementById('modalAction').textContent = 'Copy';
-    document.getElementById('modalAction').onclick = () => {
-      navigator.clipboard.writeText(data);
-      document.getElementById('modalAction').textContent = 'Copied!';
-      setTimeout(() => document.getElementById('modalAction').textContent = 'Copy', 1500);
-    };
-    document.getElementById('modalOverlay').classList.add('active');
-  });
-
-  // ---- Import ----
-  document.getElementById('importBtn').addEventListener('click', () => {
-    document.getElementById('modalTitle').textContent = 'Import Data';
-    document.getElementById('modalTextarea').value = '';
-    document.getElementById('modalTextarea').readOnly = false;
-    document.getElementById('modalAction').textContent = 'Import';
-    document.getElementById('modalAction').onclick = () => {
-      try {
-        const imported = JSON.parse(document.getElementById('modalTextarea').value);
-        const importedNotes = imported.notes || imported;
-        const importedRecurring = imported.recurring || [];
-        const importedStandaloneTodos = Array.isArray(imported.standaloneTodos) ? imported.standaloneTodos : [];
-        const importedPushupWidget = imported.pushupWidget ? normalizePushupWidget(imported.pushupWidget) : null;
-        const importedNotebook = imported.notebook || null;
-
-        for (const [date, dayNotes] of Object.entries(importedNotes)) {
-          if (!Array.isArray(dayNotes)) continue;
-          if (!notes[date]) notes[date] = [];
-          for (const note of dayNotes) {
-            if (!notes[date].find(n => n.id === note.id)) {
-              notes[date].push(note);
-            }
-          }
-        }
-        for (const rec of importedRecurring) {
-          if (!recurring.find(r => r.id === rec.id)) {
-            recurring.push(rec);
-          }
-        }
-        for (const todo of importedStandaloneTodos) {
-          if (todo && todo.id && !standaloneTodos.find(t => t.id === todo.id)) {
-            standaloneTodos.push(todo);
-          }
-        }
-        if (importedPushupWidget) {
-          const existingPushupSetIds = new Set(pushupWidget.sets.map(set => set.id));
-          pushupWidget.enabled = importedPushupWidget.enabled;
-          pushupWidget.yearGoal = importedPushupWidget.yearGoal;
-          pushupWidget.monthGoal = importedPushupWidget.monthGoal;
-          for (const set of importedPushupWidget.sets) {
-            if (!existingPushupSetIds.has(set.id)) {
-              pushupWidget.sets.push(set);
-              existingPushupSetIds.add(set.id);
-            }
-          }
-          if (importedPushupWidget.lastRecord?.at) {
-            const importedRecordTime = new Date(importedPushupWidget.lastRecord.at).getTime();
-            const currentRecordTime = pushupWidget.lastRecord?.at ? new Date(pushupWidget.lastRecord.at).getTime() : 0;
-            if (!pushupWidget.lastRecord || importedRecordTime > currentRecordTime) {
-              pushupWidget.lastRecord = importedPushupWidget.lastRecord;
-            }
-          }
-          savePushupWidget();
-        }
-        if (importedNotebook?.pages) {
-          for (const page of importedNotebook.pages) {
-            if (!notebook.pages.find(p => p.id === page.id)) {
-              notebook.pages.push(page);
-            }
-          }
-          saveNotebook();
-          renderNotebook();
-        }
-        saveNotes(notes);
-        saveRecurring();
-        saveStandaloneTodos();
-        render();
-        document.getElementById('modalOverlay').classList.remove('active');
-      } catch {
-        alert('Invalid JSON data');
-      }
-    };
-    document.getElementById('modalOverlay').classList.add('active');
-  });
-
-  document.getElementById('googleCalendarExportBtn')?.addEventListener('click', downloadGoogleCalendarIcs);
-
-  // ---- Smart Links editor ----
-  function renderSmartLinksUI() {
-    const textarea = document.getElementById('modalTextarea');
-    let html = '<div class="smart-links-editor">';
-    smartLinks.forEach((rule, i) => {
-      html += `<div class="sl-rule" data-index="${i}">
-        <div class="sl-row"><label>Nøgleord</label><input type="text" class="sl-keywords" value="${(rule.keywords || []).join(', ')}" placeholder="frisør, hår, klip"></div>
-        <div class="sl-row"><label>URL</label><input type="url" class="sl-url" value="${rule.url || ''}" placeholder="https://..."></div>
-        <button class="sl-remove" data-index="${i}" title="Fjern">&times;</button>
-      </div>`;
-    });
-    html += `<button class="sl-add">+ Tilføj Smart Link</button>`;
-    html += '</div>';
-    textarea.style.display = 'none';
-    // Insert custom UI after textarea
-    let container = document.getElementById('smartLinksContainer');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'smartLinksContainer';
-      textarea.parentNode.insertBefore(container, textarea);
     }
-    container.innerHTML = html;
-    container.style.display = 'block';
-  }
 
-  function readSmartLinksFromUI() {
-    const container = document.getElementById('smartLinksContainer');
-    if (!container) return;
-    const rules = container.querySelectorAll('.sl-rule');
-    smartLinks = [];
-    rules.forEach(rule => {
-      const keywords = rule.querySelector('.sl-keywords').value.split(',').map(k => k.trim()).filter(Boolean);
-      const url = rule.querySelector('.sl-url').value.trim();
-      if (keywords.length && url) {
-        smartLinks.push({ keywords, url, label: '' });
+    for (const todo of importedStandaloneTodos) {
+      if (todo && todo.id && !standaloneTodos.find(t => t.id === todo.id)) {
+        standaloneTodos.push(todo);
       }
-    });
-  }
+    }
 
-  document.getElementById('smartLinksBtn').addEventListener('click', () => {
-    document.getElementById('modalTitle').textContent = 'Smart Links';
-    document.getElementById('modalTextarea').style.display = 'none';
-    renderSmartLinksUI();
-    document.getElementById('modalAction').textContent = 'Gem';
-    document.getElementById('modalAction').onclick = () => {
-      readSmartLinksFromUI();
+    if (importedPushupWidget) {
+      const existingPushupSetIds = new Set(pushupWidget.sets.map(set => set.id));
+      pushupWidget.enabled = importedPushupWidget.enabled;
+      pushupWidget.yearGoal = importedPushupWidget.yearGoal;
+      pushupWidget.monthGoal = importedPushupWidget.monthGoal;
+      for (const set of importedPushupWidget.sets) {
+        if (!existingPushupSetIds.has(set.id)) {
+          pushupWidget.sets.push(set);
+          existingPushupSetIds.add(set.id);
+        }
+      }
+      if (importedPushupWidget.lastRecord?.at) {
+        const importedRecordTime = new Date(importedPushupWidget.lastRecord.at).getTime();
+        const currentRecordTime = pushupWidget.lastRecord?.at ? new Date(pushupWidget.lastRecord.at).getTime() : 0;
+        if (!pushupWidget.lastRecord || importedRecordTime > currentRecordTime) {
+          pushupWidget.lastRecord = importedPushupWidget.lastRecord;
+        }
+      }
+      savePushupWidget();
+    }
+
+    if (importedNotebook?.pages) {
+      for (const page of importedNotebook.pages) {
+        if (!notebook.pages.find(p => p.id === page.id)) {
+          notebook.pages.push(page);
+        }
+      }
+      saveNotebook();
+      renderNotebook();
+    }
+
+    if (importedSmartLinks) {
+      smartLinks = importedSmartLinks;
       saveSmartLinks();
-      document.getElementById('modalAction').textContent = 'Gemt!';
-      setTimeout(() => document.getElementById('modalOverlay').classList.remove('active'), 600);
-    };
-    document.getElementById('modalOverlay').classList.add('active');
+      renderSettingsSmartLinksUI();
+    }
 
-    // Delegate events for smart links UI
-    const container = document.getElementById('smartLinksContainer');
-    container.onclick = (e) => {
-      if (e.target.classList.contains('sl-remove')) {
-        const idx = parseInt(e.target.dataset.index);
-        smartLinks.splice(idx, 1);
-        renderSmartLinksUI();
-      }
-      if (e.target.classList.contains('sl-add')) {
-        readSmartLinksFromUI();
-        smartLinks.push({ keywords: [], url: '', label: '' });
-        renderSmartLinksUI();
-        container.querySelector('.sl-rule:last-child .sl-keywords')?.focus();
-      }
-    };
-  });
-
-  // Close modal
-  function closeModal() {
-    document.getElementById('modalOverlay').classList.remove('active');
-    document.getElementById('modalTextarea').style.display = '';
-    const slc = document.getElementById('smartLinksContainer');
-    if (slc) slc.style.display = 'none';
+    saveNotes(notes);
+    saveRecurring();
+    saveStandaloneTodos();
+    render();
   }
-  document.getElementById('modalClose').addEventListener('click', closeModal);
 
-  document.getElementById('modalOverlay').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) closeModal();
-  });
+  function refreshSettingsExport() {
+    const exportTextarea = document.getElementById('settingsExportTextarea');
+    if (exportTextarea) exportTextarea.value = getPlannerExportData();
+  }
+
+  function setSettingsStatus(id, message, color = 'var(--text-dim)') {
+    const status = document.getElementById(id);
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = color;
+  }
+
+  async function copySettingsExport() {
+    const data = getPlannerExportData();
+    refreshSettingsExport();
+    try {
+      await navigator.clipboard.writeText(data);
+      setSettingsStatus('settingsExportStatus', 'Copied.');
+    } catch (_) {
+      setSettingsStatus('settingsExportStatus', 'Copy failed. Select the export text manually.', 'var(--accent)');
+    }
+  }
+
+  function importSettingsData() {
+    const textarea = document.getElementById('settingsImportTextarea');
+    if (!textarea) return;
+    try {
+      const imported = JSON.parse(textarea.value);
+      applyImportedPlannerData(imported);
+      refreshSettingsExport();
+      textarea.value = '';
+      setSettingsStatus('settingsImportStatus', 'Imported.');
+    } catch (_) {
+      setSettingsStatus('settingsImportStatus', 'Invalid JSON data.', 'var(--accent)');
+    }
+  }
+
+  function collectSmartLinksFromSettingsUI() {
+    const container = document.getElementById('settingsSmartLinksList');
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.sl-rule'))
+      .map((rule) => {
+        const keywords = rule.querySelector('.sl-keywords')?.value
+          .split(',')
+          .map(k => k.trim())
+          .filter(Boolean) || [];
+        const url = rule.querySelector('.sl-url')?.value.trim() || '';
+        return keywords.length && url ? { keywords, url, label: '' } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function renderSettingsSmartLinksUI(rules = smartLinks || []) {
+    const container = document.getElementById('settingsSmartLinksList');
+    if (!container) return;
+    const normalized = Array.isArray(rules) ? rules : [];
+    if (!normalized.length) {
+      container.innerHTML = '<p class="settings-help">No Smart Links yet.</p>';
+      return;
+    }
+    container.innerHTML = normalized.map((rule, i) => `
+      <div class="sl-rule" data-index="${i}">
+        <div class="sl-row"><label>Keywords</label><input type="text" class="sl-keywords" value="${escapeHtml((rule.keywords || []).join(', '))}" placeholder="haircut, dentist, invoice"></div>
+        <div class="sl-row"><label>URL</label><input type="url" class="sl-url" value="${escapeHtml(rule.url || '')}" placeholder="https://..."></div>
+        <button type="button" class="sl-remove" data-index="${i}" title="Remove">&times;</button>
+      </div>
+    `).join('');
+  }
 
   // ---- Notebook ----
   const NB_STORAGE_KEY = 'endless-planner-notebook';
@@ -3819,15 +3815,25 @@
     telegramBotToken: '8614319157:AAGgaj93y6xg8uOJMZk_YI4BfTbNYFEEMi0',
     telegramChatId: '8493934471',
     leadTime: 15,
+    phoneAlarmEnabled: true,
     morningBriefing: true,
     morningTime: '06:30',
     timeZone: '',
     googleCalendarAutoSend: false
   };
 
+  function sanitizeNotifSettings(raw) {
+    const data = raw && typeof raw === 'object' ? { ...raw } : {};
+    if (typeof data.phoneAlarmEnabled !== 'boolean' && typeof data.alarmEnabled === 'boolean') {
+      data.phoneAlarmEnabled = data.alarmEnabled;
+    }
+    delete data.alarmEnabled;
+    return data;
+  }
+
   function loadNotifSettings() {
     try {
-      const saved = JSON.parse(localStorage.getItem(NOTIF_KEY));
+      const saved = sanitizeNotifSettings(JSON.parse(localStorage.getItem(NOTIF_KEY)));
       if (saved && typeof saved === 'object') return { ...DEFAULT_NOTIF_SETTINGS, ...saved };
       // Auto-save defaults if nothing saved yet
       localStorage.setItem(NOTIF_KEY, JSON.stringify(DEFAULT_NOTIF_SETTINGS));
@@ -3839,8 +3845,9 @@
   }
 
   function saveNotifSettings(s) {
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(s));
-    if (syncReady) SupabaseSync.save('notifSettings', s);
+    const clean = { ...DEFAULT_NOTIF_SETTINGS, ...sanitizeNotifSettings(s) };
+    localStorage.setItem(NOTIF_KEY, JSON.stringify(clean));
+    if (syncReady) SupabaseSync.save('notifSettings', clean);
   }
 
   function ensureNotifTimeZone() {
@@ -3877,6 +3884,137 @@
     if (syncReady) SupabaseSync.save('morningBriefSent', { date: todayKey });
   }
 
+  let alarmAudioCtx = null;
+  let alarmInterval = null;
+  let alarmStopTimer = null;
+
+  function isLikelyPhoneAlarmDevice() {
+    const ua = navigator.userAgent || '';
+    if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+
+    const touchPoints = navigator.maxTouchPoints || 0;
+    const screenW = window.screen?.width || window.innerWidth;
+    const screenH = window.screen?.height || window.innerHeight;
+    return touchPoints > 0 && Math.min(screenW, screenH) <= 820;
+  }
+
+  function isAlarmEnabledOnThisDevice() {
+    return isLikelyPhoneAlarmDevice() && !!loadNotifSettings().phoneAlarmEnabled;
+  }
+
+  function updateAlarmDeviceUi() {
+    const toggle = document.getElementById('alarmNotifToggle');
+    const status = document.getElementById('alarmDeviceStatus');
+    if (!toggle || !status) return;
+
+    const isPhone = isLikelyPhoneAlarmDevice();
+    const settings = loadNotifSettings();
+    toggle.checked = !!settings.phoneAlarmEnabled;
+    toggle.disabled = false;
+    status.textContent = isPhone
+      ? 'When this is on, this phone rings for timed reminders.'
+      : 'When this is on, reminders created here can ring on your phone; this desktop will stay silent.';
+  }
+
+  function getAlarmAudioContext() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!alarmAudioCtx) alarmAudioCtx = new AudioCtx();
+    return alarmAudioCtx;
+  }
+
+  function primeAlarmAudio() {
+    if (!isAlarmEnabledOnThisDevice()) return;
+    const ctx = getAlarmAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
+
+  function stopAlarmSound() {
+    if (alarmInterval) {
+      clearInterval(alarmInterval);
+      alarmInterval = null;
+    }
+    if (alarmStopTimer) {
+      clearTimeout(alarmStopTimer);
+      alarmStopTimer = null;
+    }
+    if ('vibrate' in navigator) {
+      navigator.vibrate(0);
+    }
+  }
+
+  function scheduleAlarmTone(ctx, start, frequency) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.18, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.25);
+  }
+
+  async function playAlarmSound() {
+    const ctx = getAlarmAudioContext();
+    if (!ctx) return false;
+
+    try {
+      if (ctx.state === 'suspended') await ctx.resume();
+    } catch (_) {
+      return false;
+    }
+    if (ctx.state !== 'running') return false;
+
+    stopAlarmSound();
+    const playPattern = () => {
+      const start = ctx.currentTime + 0.02;
+      scheduleAlarmTone(ctx, start, 740);
+      scheduleAlarmTone(ctx, start + 0.28, 880);
+      scheduleAlarmTone(ctx, start + 0.56, 740);
+    };
+
+    playPattern();
+    alarmInterval = setInterval(playPattern, 1800);
+    alarmStopTimer = setTimeout(stopAlarmSound, 15000);
+    return true;
+  }
+
+  function showAlarmModal(message, detail) {
+    const overlay = document.getElementById('alarmModalOverlay');
+    const messageEl = document.getElementById('alarmModalMessage');
+    const whenEl = document.getElementById('alarmModalWhen');
+    if (!overlay || !messageEl || !whenEl) return;
+
+    messageEl.textContent = message || 'Reminder due';
+    whenEl.textContent = detail || 'Reminder due';
+    overlay.classList.add('active');
+  }
+
+  function stopReminderAlarm() {
+    stopAlarmSound();
+    const overlay = document.getElementById('alarmModalOverlay');
+    if (overlay) overlay.classList.remove('active');
+  }
+
+  function triggerReminderAlarm(message, detail) {
+    if (!isAlarmEnabledOnThisDevice()) return;
+
+    showAlarmModal(message, detail);
+    if ('vibrate' in navigator) {
+      navigator.vibrate([450, 160, 450, 160, 700]);
+    }
+    playAlarmSound();
+  }
+
+  document.addEventListener('pointerdown', primeAlarmAudio, { passive: true });
+  document.addEventListener('touchstart', primeAlarmAudio, { passive: true });
+  document.addEventListener('keydown', primeAlarmAudio);
+
   async function sendTelegramMessage(text) {
     const s = loadNotifSettings();
     if (!s.telegramBotToken || !s.telegramChatId) return false;
@@ -3895,15 +4033,44 @@
     } catch { return false; }
   }
 
-  function sendBrowserNotification(title, body) {
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/icons/icon.svg' });
-    }
+  function waitForServiceWorkerReady(timeoutMs = 1200) {
+    return Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
+    ]);
+  }
+
+  async function sendBrowserNotification(title, body, tag = 'jarvis-reminder') {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+
+    const options = {
+      body,
+      icon: '/icons/icon.svg',
+      badge: '/icons/icon.svg',
+      tag,
+      renotify: true,
+      requireInteraction: true,
+      data: { url: location.href }
+    };
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await waitForServiceWorkerReady();
+        if (reg) {
+          await reg.showNotification(title, options);
+          return true;
+        }
+      }
+    } catch (_) {}
+
+    new Notification(title, options);
+    return true;
   }
 
   function checkNotifications() {
     const s = loadNotifSettings();
-    if (!s.browserEnabled && !s.telegramEnabled) return;
+    const alarmEnabledHere = isAlarmEnabledOnThisDevice();
+    if (!s.browserEnabled && !s.telegramEnabled && !alarmEnabledHere) return;
 
     const now = new Date();
     const todayKey = dateKey(now);
@@ -3943,7 +4110,10 @@
         const message = `Sir — ${when}: ${cleanText}`;
 
         if (s.browserEnabled) {
-          sendBrowserNotification('Jarvis', message);
+          sendBrowserNotification('Jarvis', message, uniqueId);
+        }
+        if (alarmEnabledHere) {
+          triggerReminderAlarm(cleanText || message, `Reminder ${when}`);
         }
         if (s.telegramEnabled) {
           sendTelegramMessage(`<b>Sir</b> &mdash; ${when}: ${cleanText}`);
@@ -4102,10 +4272,34 @@
   setInterval(() => { checkNotifications(); checkMorningBriefing(); }, 30000);
   setTimeout(() => { checkNotifications(); checkMorningBriefing(); }, 2000);
 
-  // ---- Notifications UI ----
-  document.getElementById('notificationsBtn').addEventListener('click', () => {
+  // ---- Settings UI ----
+  const settingsOverlay = document.getElementById('notifModalOverlay');
+  const settingsTabs = Array.from(document.querySelectorAll('[data-settings-section]'));
+  const settingsPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
+
+  function setSettingsSection(section) {
+    const resolved = settingsPanels.some(panel => panel.dataset.settingsPanel === section)
+      ? section
+      : 'jarvis';
+
+    settingsTabs.forEach((tab) => {
+      const isActive = tab.dataset.settingsSection === resolved;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      tab.tabIndex = isActive ? 0 : -1;
+    });
+
+    settingsPanels.forEach((panel) => {
+      const isActive = panel.dataset.settingsPanel === resolved;
+      panel.classList.toggle('active', isActive);
+      panel.hidden = !isActive;
+    });
+  }
+
+  function populateSettingsModal() {
     const s = loadNotifSettings();
     document.getElementById('browserNotifToggle').checked = !!s.browserEnabled;
+    updateAlarmDeviceUi();
     document.getElementById('telegramNotifToggle').checked = !!s.telegramEnabled;
     document.getElementById('telegramBotToken').value = s.telegramBotToken || '';
     document.getElementById('telegramChatId').value = s.telegramChatId || '';
@@ -4115,6 +4309,10 @@
     document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
     document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
     document.getElementById('pushupYearGoalInput').value = String(pushupWidget.yearGoal ?? DEFAULT_PUSHUP_YEAR_GOAL);
+    refreshSettingsExport();
+    renderSettingsSmartLinksUI();
+    setSettingsStatus('settingsExportStatus', '');
+    setSettingsStatus('settingsImportStatus', '');
 
     const statusEl = document.getElementById('browserNotifStatus');
     if ('Notification' in window) {
@@ -4122,8 +4320,35 @@
     } else {
       statusEl.textContent = 'Not supported in this browser';
     }
+  }
 
-    document.getElementById('notifModalOverlay').classList.add('active');
+  function openSettingsModal(section = 'jarvis') {
+    populateSettingsModal();
+    setSettingsSection(section);
+    settingsOverlay.classList.add('active');
+  }
+
+  function closeSettingsModal() {
+    settingsOverlay.classList.remove('active');
+  }
+
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    openSettingsModal('jarvis');
+  });
+
+  settingsTabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => {
+      setSettingsSection(tab.dataset.settingsSection);
+    });
+
+    tab.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const step = e.key === 'ArrowRight' ? 1 : -1;
+      const next = settingsTabs[(index + step + settingsTabs.length) % settingsTabs.length];
+      next.focus();
+      setSettingsSection(next.dataset.settingsSection);
+    });
   });
 
   document.getElementById('browserNotifToggle').addEventListener('change', async (e) => {
@@ -4131,6 +4356,18 @@
       const perm = await Notification.requestPermission();
       document.getElementById('browserNotifStatus').textContent = `Permission: ${perm}`;
       if (perm !== 'granted') e.target.checked = false;
+    }
+  });
+
+  document.getElementById('alarmNotifToggle').addEventListener('change', (e) => {
+    const s = loadNotifSettings();
+    s.phoneAlarmEnabled = e.target.checked;
+    saveNotifSettings(s);
+    updateAlarmDeviceUi();
+    if (isAlarmEnabledOnThisDevice()) {
+      primeAlarmAudio();
+    } else {
+      stopReminderAlarm();
     }
   });
 
@@ -4168,13 +4405,39 @@
     }
   });
 
-    document.getElementById('notifModalSave').addEventListener('click', () => {
+  document.getElementById('settingsMonthCalendarBtn').addEventListener('click', () => {
+    closeSettingsModal();
+    openCalPicker();
+  });
+
+  document.getElementById('settingsGoogleCalendarExportBtn').addEventListener('click', downloadGoogleCalendarIcs);
+  document.getElementById('settingsCopyExportBtn').addEventListener('click', copySettingsExport);
+  document.getElementById('settingsImportBtn').addEventListener('click', importSettingsData);
+
+  document.getElementById('settingsSmartLinksAddBtn').addEventListener('click', () => {
+    const draft = collectSmartLinksFromSettingsUI();
+    draft.push({ keywords: [], url: '', label: '' });
+    renderSettingsSmartLinksUI(draft);
+    document.querySelector('#settingsSmartLinksList .sl-rule:last-child .sl-keywords')?.focus();
+  });
+
+  document.getElementById('settingsSmartLinksList').addEventListener('click', (e) => {
+    const removeBtn = e.target.closest('.sl-remove');
+    if (!removeBtn) return;
+    const idx = parseInt(removeBtn.dataset.index, 10);
+    const draft = collectSmartLinksFromSettingsUI();
+    if (Number.isFinite(idx)) draft.splice(idx, 1);
+    renderSettingsSmartLinksUI(draft);
+  });
+
+  document.getElementById('notifModalSave').addEventListener('click', () => {
     const s = {
       browserEnabled: document.getElementById('browserNotifToggle').checked,
       telegramEnabled: document.getElementById('telegramNotifToggle').checked,
       telegramBotToken: document.getElementById('telegramBotToken').value.trim(),
       telegramChatId: document.getElementById('telegramChatId').value.trim(),
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
+      phoneAlarmEnabled: document.getElementById('alarmNotifToggle').checked,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
       morningTime: document.getElementById('morningBriefingTime').value || '06:30',
       googleCalendarAutoSend: document.getElementById('googleCalendarAutoSendToggle').checked,
@@ -4186,16 +4449,27 @@
     pushupWidget.monthGoal = Math.max(0, parseInt(document.getElementById('pushupMonthGoalInput').value, 10) || 0);
     pushupWidget.yearGoal = Math.max(0, parseInt(document.getElementById('pushupYearGoalInput').value, 10) || 0);
     savePushupWidget();
+    smartLinks = collectSmartLinksFromSettingsUI();
+    saveSmartLinks();
     renderTodoPanel();
-    document.getElementById('notifModalOverlay').classList.remove('active');
+    closeSettingsModal();
   });
 
   document.getElementById('notifModalClose').addEventListener('click', () => {
-    document.getElementById('notifModalOverlay').classList.remove('active');
+    closeSettingsModal();
   });
 
-  document.getElementById('notifModalOverlay').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) e.currentTarget.classList.remove('active');
+  document.getElementById('notifModalCloseIcon').addEventListener('click', () => {
+    closeSettingsModal();
+  });
+
+  settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSettingsModal();
+  });
+
+  document.getElementById('alarmModalDismiss').addEventListener('click', stopReminderAlarm);
+  document.getElementById('alarmModalOverlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) stopReminderAlarm();
   });
 
   // ---- Sticky offset sync ----
@@ -4312,7 +4586,10 @@
       return true;
     }
     if (key === 'pushupWidget') {
-      pushupWidget = normalizePushupWidget(remote);
+      const shouldProtectLocalPushup = pushupLocalWriteAt && Date.now() - pushupLocalWriteAt < 10000;
+      pushupWidget = shouldProtectLocalPushup
+        ? mergePushupWidgetData(pushupWidget, remote)
+        : normalizePushupWidget(remote);
       localStorage.setItem(PUSHUP_WIDGET_KEY, JSON.stringify(pushupWidget));
       return true;
     }
@@ -4330,7 +4607,8 @@
       return true;
     }
     if (key === 'notifSettings') {
-      const merged = remote && typeof remote === 'object' ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : { ...DEFAULT_NOTIF_SETTINGS };
+      const remoteSettings = sanitizeNotifSettings(remote);
+      const merged = remoteSettings && typeof remoteSettings === 'object' ? { ...DEFAULT_NOTIF_SETTINGS, ...remoteSettings } : { ...DEFAULT_NOTIF_SETTINGS };
       let tz = '';
       try {
         tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -4421,7 +4699,7 @@
 
     syncListeners.push(SupabaseSync.listen('pushupWidget', (remote, meta) => {
       if (!applyRemotePayload('pushupWidget', remote, meta)) return;
-      if (!isUserEditing()) renderTodoPanel();
+      if (!isUserEditing()) renderWidgetsPanelInPlace();
     }));
 
     syncListeners.push(SupabaseSync.listen('notebook', (remote, meta) => {
@@ -4785,6 +5063,10 @@
       }
       if (calPickerOverlay.classList.contains('active')) {
         closeCalPicker();
+      }
+      const alarmOverlay = document.getElementById('alarmModalOverlay');
+      if (alarmOverlay && alarmOverlay.classList.contains('active')) {
+        stopReminderAlarm();
       }
       const msRow = document.getElementById('mobileSearchRow');
       if (msRow && msRow.classList.contains('active')) {
