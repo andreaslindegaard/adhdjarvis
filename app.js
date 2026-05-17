@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 54;
+  const SW_SCRIPT_VERSION = 55;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -291,11 +291,14 @@
   function getPushupStats(now = new Date()) {
     const dayTotals = new Map();
     const weekTotals = new Map();
+    const monthTotals = new Map();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    const currentWeekKey = getISOWeekKey(now);
     const yesterdayKey = addDaysToDateKey(dateKey(now), -1);
     let todayTotal = 0;
     let yesterdayTotal = 0;
+    let weekTotal = 0;
     let monthTotal = 0;
     let yearTotal = 0;
     let allTimeTotal = 0;
@@ -307,12 +310,15 @@
       const setDate = getPushupSetDate(set);
       const day = dateKey(setDate);
       const week = getISOWeekKey(setDate);
+      const month = `${setDate.getFullYear()}-${String(setDate.getMonth() + 1).padStart(2, '0')}`;
 
       dayTotals.set(day, (dayTotals.get(day) || 0) + count);
       weekTotals.set(week, (weekTotals.get(week) || 0) + count);
+      monthTotals.set(month, (monthTotals.get(month) || 0) + count);
       allTimeTotal += count;
       if (setDate.getFullYear() === currentYear) yearTotal += count;
       if (setDate.getFullYear() === currentYear && setDate.getMonth() === currentMonth) monthTotal += count;
+      if (week === currentWeekKey) weekTotal += count;
       if (day === dateKey(now)) todayTotal += count;
       if (day === yesterdayKey) yesterdayTotal += count;
       if (count > bestSet.count) bestSet = { count, date: day };
@@ -328,7 +334,11 @@
       if (count > bestWeek.count) bestWeek = { count, key };
     }
 
-    const currentSet = getActivePushupSet(now);
+    let bestMonth = { count: 0, key: '' };
+    for (const [key, count] of monthTotals.entries()) {
+      if (count > bestMonth.count) bestMonth = { count, key };
+    }
+
     const monthGoal = Math.max(0, Number.parseInt(pushupWidget.monthGoal, 10) || 0);
     const monthRemaining = Math.max(0, monthGoal - monthTotal);
     const monthProgress = monthGoal > 0 ? Math.min(100, Math.round((monthTotal / monthGoal) * 100)) : 0;
@@ -352,13 +362,14 @@
     return {
       todayTotal,
       yesterdayTotal,
+      weekTotal,
       monthTotal,
       yearTotal,
       allTimeTotal,
       bestSet,
       bestDay,
       bestWeek,
-      currentSetCount: currentSet ? currentSet.count : 0,
+      bestMonth,
       monthGoal,
       monthRemaining,
       monthProgress,
@@ -985,6 +996,13 @@
     return `Week ${Number(match[2])}, ${match[1]}`;
   }
 
+  function formatPushupMonthLabel(key) {
+    const match = /^(\d{4})-(\d{2})$/.exec(key || '');
+    if (!match) return key || 'No record yet';
+    const monthIndex = Number(match[2]) - 1;
+    return `${MONTHS[monthIndex] || match[2]} ${match[1]}`;
+  }
+
   function renderPushupStat(label, value, detail) {
     return `<div class="pushup-stat">
       <span>${escapeHtml(label)}</span>
@@ -1127,8 +1145,9 @@
         ${statsOpen ? `<div class="pushup-stat-grid">
           ${renderPushupStat('Best day', stats.bestDay.count, stats.bestDay.key ? formatTodoPanelDate(stats.bestDay.key) : '')}
           ${renderPushupStat('Best week', stats.bestWeek.count, stats.bestWeek.key ? formatPushupWeekLabel(stats.bestWeek.key) : '')}
+          ${renderPushupStat('Best month', stats.bestMonth.count, stats.bestMonth.key ? formatPushupMonthLabel(stats.bestMonth.key) : '')}
           ${renderPushupStat('Best streak', stats.bestSet.count, stats.bestSet.date ? formatTodoPanelDate(stats.bestSet.date) : '')}
-          ${renderPushupStat('Current streak', stats.currentSetCount, activeSet ? 'Active now' : 'Resting')}
+          ${renderPushupStat('Weekly count', stats.weekTotal, 'This week')}
         </div>
         ${renderPushupYearPace(stats)}` : ''}
       </div>

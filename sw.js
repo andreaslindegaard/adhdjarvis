@@ -1,4 +1,4 @@
-const CACHE_NAME = 'adhd-jarvis-v54';
+const CACHE_NAME = 'adhd-jarvis-v55';
 
 // Install: skip waiting immediately to take over
 self.addEventListener('install', (event) => {
