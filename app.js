@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 56;
+  const SW_SCRIPT_VERSION = 57;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -596,7 +596,11 @@
         occurrenceDate: date,
         text: rec.text,
         time: rec.time || null,
+        endTime: rec.endTime || null,
+        allDay: rec.allDay ?? !rec.time,
         leadTime: rec.leadTime ?? null,
+        location: rec.location || '',
+        description: rec.description || '',
         recurring: rec
       };
     }
@@ -607,7 +611,11 @@
       date,
       text: note.text,
       time: note.time || null,
-      leadTime: note.leadTime ?? null
+      endTime: note.endTime || null,
+      allDay: note.allDay ?? !note.time,
+      leadTime: note.leadTime ?? null,
+      location: note.location || '',
+      description: note.description || ''
     };
   }
 
@@ -616,12 +624,13 @@
     const title = plainCalendarText(event.text);
     params.set('action', 'TEMPLATE');
     params.set('text', title);
-    params.set('details', 'Created from ADHD Jarvis');
+    params.set('details', event.description ? plainCalendarText(event.description) : 'Created from ADHD Jarvis');
     params.set('ctz', getBrowserTimeZone());
+    if (event.location) params.set('location', plainCalendarText(event.location));
 
-    if (event.time) {
+    if (event.time && event.allDay !== true) {
       const start = makeCalendarDate(event.date, event.time);
-      const end = addMinutes(start, 60);
+      const end = event.endTime ? makeCalendarDate(event.date, event.endTime) : addMinutes(start, 60);
       params.set('dates', `${formatCompactDateTime(start)}/${formatCompactDateTime(end)}`);
     } else {
       params.set('dates', `${formatCompactDate(event.date)}/${formatCompactDate(addDaysToDateKey(event.date, 1))}`);
@@ -672,7 +681,11 @@
           date,
           text: note.text,
           time: note.time || null,
-          leadTime: note.leadTime ?? null
+          endTime: note.endTime || null,
+          allDay: note.allDay ?? !note.time,
+          leadTime: note.leadTime ?? null,
+          location: note.location || '',
+          description: note.description || ''
         }));
     }
     recurring
@@ -682,24 +695,32 @@
         date: rec.startDate,
         text: rec.text,
         time: rec.time || null,
+        endTime: rec.endTime || null,
+        allDay: rec.allDay ?? !rec.time,
         leadTime: rec.leadTime ?? null,
+        location: rec.location || '',
+        description: rec.description || '',
         recurring: rec
       }));
     return events.sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
   }
 
   function buildIcsEvent(event, nowStamp, tz) {
+    const description = event.description
+      ? `Created from ADHD Jarvis\n\n${event.description}`
+      : 'Created from ADHD Jarvis';
     const lines = [
       'BEGIN:VEVENT',
       `UID:adhd-jarvis-${event.id}@local`,
       `DTSTAMP:${nowStamp}`,
       `SUMMARY:${escapeIcsText(event.text)}`,
-      'DESCRIPTION:Created from ADHD Jarvis'
+      `DESCRIPTION:${escapeIcsText(description)}`
     ];
+    if (event.location) lines.push(`LOCATION:${escapeIcsText(event.location)}`);
 
-    if (event.time) {
+    if (event.time && event.allDay !== true) {
       const start = makeCalendarDate(event.date, event.time);
-      const end = addMinutes(start, 60);
+      const end = event.endTime ? makeCalendarDate(event.date, event.endTime) : addMinutes(start, 60);
       lines.push(`DTSTART;TZID=${tz}:${formatIcsDateTime(start)}`);
       lines.push(`DTEND;TZID=${tz}:${formatIcsDateTime(end)}`);
     } else {
@@ -710,7 +731,7 @@
     const rrule = buildCalendarRRule(event);
     if (rrule) lines.push(`RRULE:${rrule}`);
 
-    if (event.leadTime && event.time) {
+    if (event.leadTime && event.time && event.allDay !== true) {
       lines.push('BEGIN:VALARM');
       lines.push(`TRIGGER:-PT${event.leadTime}M`);
       lines.push('ACTION:DISPLAY');
@@ -1398,6 +1419,7 @@
           const doneClass = note.done ? 'done' : '';
           const checked = note.done ? 'checked' : '';
           const eventClass = note.isEvent ? 'is-event' : '';
+          const noteTimeText = note.time ? `${note.time}${note.endTime ? '-' + note.endTime : ''}` : '';
           const displayText = renderRichText(note.text);
           const checkboxHtml = note.isEvent
             ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
@@ -1409,7 +1431,7 @@
             <div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
               ${checkboxHtml}
               <div class="note-text">${displayText}</div>
-              <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
+              <span class="note-time">${noteTimeText}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
             </div>
             <div class="note-actions">
               ${googleCalendarButton}
@@ -1422,42 +1444,7 @@
       }
 
       html += `<div class="add-note-area">
-        <div class="quick-actions" data-date="${key}">
-          <span class="quick-actions-label">Hurtig tilf\u00f8j</span>
-          <button class="quick-action" data-date="${key}" data-qa="task">\u2610 Task</button>
-          <button class="quick-action" data-date="${key}" data-qa="event">\u{1f4c5} Event</button>
-          <button class="quick-action" data-date="${key}" data-qa="daily">\u21bb Daglig</button>
-          <button class="quick-action" data-date="${key}" data-qa="weekly">\u21bb Ugentlig</button>
-          <button class="quick-action" data-date="${key}" data-qa="biweekly">\u21bb 14. dag</button>
-          <button class="quick-action" data-date="${key}" data-qa="monthly">\u21bb M\u00e5nedlig</button>
-          <button class="quick-action quick-action-close" data-date="${key}" data-qa="close">&times;</button>
-        </div>
-        <button class="add-note-btn" data-date="${key}">+ Add note</button>
-        <div class="add-note-form" data-date="${key}">
-          <div class="form-row">
-            <textarea placeholder="Write a note... (use #tags)" data-date="${key}" rows="1" spellcheck="false"></textarea>
-            <button class="reminder-menu-btn" data-date="${key}" title="P\u00e5mindelse">&#x23f0;</button>
-            <button class="recurring-menu-btn" data-date="${key}" title="Gentagelse">&#x21bb;</button>
-            <button class="task-toggle-btn" data-date="${key}" title="Opgave (med checkbox)">&#x2610; Task</button>
-            <button data-date="${key}" class="save-note-btn">Add</button>
-            <button data-date="${key}" class="cancel-note-btn">&times;</button>
-          </div>
-          <div class="reminder-options hidden" data-date="${key}">
-            <button class="reminder-option" data-mins="0" data-date="${key}">Ingen</button>
-            <button class="reminder-option" data-mins="5" data-date="${key}">5 min</button>
-            <button class="reminder-option" data-mins="15" data-date="${key}">15 min</button>
-            <button class="reminder-option" data-mins="30" data-date="${key}">30 min</button>
-            <button class="reminder-option" data-mins="60" data-date="${key}">1 time</button>
-            <button class="reminder-option" data-mins="1440" data-date="${key}">1 dag</button>
-          </div>
-          <div class="recurring-options hidden" data-date="${key}">
-            <button class="recurring-option" data-freq="daily" data-date="${key}">Daglig</button>
-            <button class="recurring-option" data-freq="weekly" data-date="${key}">Ugentlig</button>
-            <button class="recurring-option" data-freq="biweekly" data-date="${key}">Hver 14. dag</button>
-            <button class="recurring-option" data-freq="monthly" data-date="${key}">M\u00e5nedlig</button>
-            <button class="recurring-option" data-freq="yearly" data-date="${key}">\u00c5rlig</button>
-          </div>
-        </div>
+        <button type="button" class="add-note-btn" data-date="${key}" title="Add entry" aria-label="Add entry for ${key}">+</button>
       </div>`;
 
       html += `</div>`;
@@ -1466,7 +1453,6 @@
 
     doc.innerHTML = html;
     renderTodoPanel();
-    bindEvents();
     updateStickyOffsets();
     scrollToTodayOnBoot();
   }
@@ -1723,6 +1709,395 @@
     }, { capture: true, passive: false });
   }
 
+  const ENTRY_LEAD_OPTIONS = [
+    [null, 'None'],
+    [5, '5 min before'],
+    [15, '15 min before'],
+    [30, '30 min before'],
+    [60, '1 hour before'],
+    [1440, '1 day before']
+  ];
+  const ENTRY_REPEAT_OPTIONS = [
+    [null, 'Does not repeat'],
+    ['daily', 'Daily'],
+    ['weekly', 'Weekly'],
+    ['biweekly', 'Every 2 weeks'],
+    ['monthly', 'Monthly'],
+    ['yearly', 'Yearly']
+  ];
+
+  let entryEditorEl = null;
+  let entryEditorContext = null;
+
+  function addOneHourTime(time) {
+    if (!time) return '10:00';
+    const [h, m] = time.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return '10:00';
+    const total = Math.min((h * 60) + m + 60, (23 * 60) + 59);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  function getEntryForEdit(date, id, recurringId) {
+    if (recurringId) return recurring.find(r => r.id === recurringId) || null;
+    return (notes[date] || []).find(n => n.id === id) || null;
+  }
+
+  function getEntryRepeatValue(context, entry) {
+    if (!context?.recurringId || !entry) return null;
+    return entry.frequency || 'daily';
+  }
+
+  function selectedAttr(a, b) {
+    return a === b ? ' selected' : '';
+  }
+
+  function checkedAttr(value) {
+    return value ? ' checked' : '';
+  }
+
+  function renderEntryEditorHtml(context) {
+    const entry = context.mode === 'edit'
+      ? getEntryForEdit(context.date, context.id, context.recurringId)
+      : null;
+    const date = context.mode === 'edit'
+      ? (context.recurringId ? (context.date || entry?.startDate) : context.date)
+      : context.date;
+    const title = entry?.text || '';
+    const isEvent = entry ? (entry.isEvent ?? true) : true;
+    const allDay = entry ? (entry.allDay ?? !entry.time) : true;
+    const startTime = entry?.time || '09:00';
+    const endTime = entry?.endTime || addOneHourTime(startTime);
+    const leadTime = entry?.leadTime ?? null;
+    const repeat = getEntryRepeatValue(context, entry);
+    const location = entry?.location || '';
+    const description = entry?.description || '';
+    const heading = context.mode === 'edit' ? 'Edit entry' : 'Add entry';
+
+    const leadOptions = ENTRY_LEAD_OPTIONS.map(([value, label]) => {
+      const v = value == null ? '' : String(value);
+      return `<option value="${v}"${selectedAttr(value, leadTime)}>${label}</option>`;
+    }).join('');
+    const repeatOptions = ENTRY_REPEAT_OPTIONS.map(([value, label]) => {
+      const v = value || '';
+      return `<option value="${v}"${selectedAttr(value, repeat)}>${label}</option>`;
+    }).join('');
+
+    return `<form class="entry-editor-form" novalidate>
+      <div class="entry-editor-head">
+        <h3>${heading}</h3>
+        <button type="button" class="entry-editor-close" data-entry-action="cancel" title="Close" aria-label="Close">&times;</button>
+      </div>
+      <textarea class="entry-editor-title" name="title" rows="1" placeholder="Add title" data-date="${escapeHtml(date)}" spellcheck="false">${escapeHtml(title)}</textarea>
+      <div class="entry-editor-type" role="group" aria-label="Entry type">
+        <button type="button" class="entry-type-btn${isEvent ? ' active' : ''}" data-entry-type="event">Event</button>
+        <button type="button" class="entry-type-btn${!isEvent ? ' active' : ''}" data-entry-type="task">Task</button>
+      </div>
+      <input type="hidden" name="kind" value="${isEvent ? 'event' : 'task'}">
+      <label class="entry-editor-check">
+        <input type="checkbox" name="allDay"${checkedAttr(allDay)}>
+        <span>All day</span>
+      </label>
+      <div class="entry-editor-grid">
+        <label>
+          <span>Date</span>
+          <input type="date" name="date" value="${escapeHtml(date)}" required>
+        </label>
+        <label class="entry-time-field">
+          <span>Start</span>
+          <input type="time" name="startTime" value="${escapeHtml(startTime)}">
+        </label>
+        <label class="entry-time-field">
+          <span>End</span>
+          <input type="time" name="endTime" value="${escapeHtml(endTime)}">
+        </label>
+      </div>
+      <div class="entry-editor-grid entry-editor-grid--two">
+        <label>
+          <span>Reminder</span>
+          <select name="leadTime">${leadOptions}</select>
+        </label>
+        <label>
+          <span>Repeat</span>
+          <select name="repeat">${repeatOptions}</select>
+        </label>
+      </div>
+      <label class="entry-editor-field">
+        <span>Location</span>
+        <input type="text" name="location" value="${escapeHtml(location)}" placeholder="Add location">
+      </label>
+      <label class="entry-editor-field">
+        <span>Description</span>
+        <textarea name="description" rows="3" placeholder="Add description">${escapeHtml(description)}</textarea>
+      </label>
+      <p class="entry-editor-error" aria-live="polite"></p>
+      <div class="entry-editor-actions">
+        <button type="button" class="entry-editor-secondary" data-entry-action="cancel">Cancel</button>
+        <button type="submit" class="entry-editor-primary">${context.mode === 'edit' ? 'Save' : 'Add'}</button>
+      </div>
+    </form>`;
+  }
+
+  function updateEntryEditorTimeVisibility() {
+    if (!entryEditorEl) return;
+    const allDay = entryEditorEl.querySelector('[name="allDay"]')?.checked;
+    entryEditorEl.querySelectorAll('.entry-time-field').forEach(field => {
+      field.classList.toggle('hidden', !!allDay);
+    });
+  }
+
+  function resizeEntryEditorTitle() {
+    const title = entryEditorEl?.querySelector('.entry-editor-title');
+    if (!title) return;
+    title.style.height = 'auto';
+    title.style.height = `${title.scrollHeight}px`;
+  }
+
+  function positionEntryEditor() {
+    if (!entryEditorEl || !entryEditorContext?.anchorEl) return;
+    const rect = entryEditorContext.anchorEl.getBoundingClientRect();
+    const width = Math.min(430, window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    let top = rect.bottom + 8;
+    const height = entryEditorEl.offsetHeight || 520;
+    if (top + height > window.innerHeight - 12) top = Math.max(12, window.innerHeight - height - 12);
+    entryEditorEl.style.width = `${width}px`;
+    entryEditorEl.style.left = `${left}px`;
+    entryEditorEl.style.top = `${top}px`;
+  }
+
+  function closeEntryEditor() {
+    hideCalendarSmartListMenu();
+    if (entryEditorEl) entryEditorEl.remove();
+    entryEditorEl = null;
+    entryEditorContext = null;
+    window.removeEventListener('resize', positionEntryEditor);
+    document.removeEventListener('scroll', positionEntryEditor, true);
+  }
+
+  function openEntryEditor(context) {
+    closeEntryEditor();
+    entryEditorContext = context;
+    entryEditorEl = document.createElement('div');
+    entryEditorEl.className = 'entry-editor-popover';
+    entryEditorEl.innerHTML = renderEntryEditorHtml(context);
+    document.body.appendChild(entryEditorEl);
+
+    const form = entryEditorEl.querySelector('.entry-editor-form');
+    const title = entryEditorEl.querySelector('.entry-editor-title');
+    const allDay = entryEditorEl.querySelector('[name="allDay"]');
+
+    entryEditorEl.querySelectorAll('[data-entry-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        form.elements.kind.value = btn.dataset.entryType;
+        entryEditorEl.querySelectorAll('[data-entry-type]').forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+
+    allDay.addEventListener('change', () => {
+      if (!allDay.checked) {
+        if (!form.elements.startTime.value) form.elements.startTime.value = '09:00';
+        if (!form.elements.endTime.value) form.elements.endTime.value = addOneHourTime(form.elements.startTime.value);
+      }
+      updateEntryEditorTimeVisibility();
+    });
+    form.elements.startTime.addEventListener('change', () => {
+      if (!form.elements.endTime.value || form.elements.endTime.value <= form.elements.startTime.value) {
+        form.elements.endTime.value = addOneHourTime(form.elements.startTime.value);
+      }
+    });
+    title.addEventListener('input', () => {
+      resizeEntryEditorTitle();
+      updateCalendarSmartListMenu(title);
+    });
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      saveEntryEditor();
+    });
+    entryEditorEl.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-entry-action="cancel"]')) closeEntryEditor();
+    });
+    entryEditorEl.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        closeEntryEditor();
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+        ev.preventDefault();
+        saveEntryEditor();
+      }
+    });
+
+    updateEntryEditorTimeVisibility();
+    resizeEntryEditorTitle();
+    positionEntryEditor();
+    window.addEventListener('resize', positionEntryEditor);
+    document.addEventListener('scroll', positionEntryEditor, true);
+    title.focus();
+    title.setSelectionRange(title.value.length, title.value.length);
+  }
+
+  function entryEditorError(message) {
+    const el = entryEditorEl?.querySelector('.entry-editor-error');
+    if (el) el.textContent = message || '';
+  }
+
+  function collectEntryEditorDraft() {
+    const form = entryEditorEl?.querySelector('.entry-editor-form');
+    if (!form) return null;
+    const title = form.elements.title.value.trim();
+    const date = form.elements.date.value;
+    const allDay = form.elements.allDay.checked;
+    const startTime = form.elements.startTime.value || '09:00';
+    const endTime = form.elements.endTime.value || addOneHourTime(startTime);
+    if (!title) return entryEditorError('Add a title first.'), null;
+    if (!date) return entryEditorError('Choose a date.'), null;
+    if (!allDay && endTime <= startTime) return entryEditorError('End time must be after start time.'), null;
+
+    const leadTimeRaw = form.elements.leadTime.value;
+    const repeat = form.elements.repeat.value || null;
+    let text = applySmartLinks(capitalizeFirst(title));
+    const textLeadTime = parseLeadTime(text);
+    if (textLeadTime !== null) text = cleanLeadTimeText(text);
+    return {
+      text,
+      date,
+      isEvent: form.elements.kind.value !== 'task',
+      allDay,
+      time: allDay ? null : startTime,
+      endTime: allDay ? null : endTime,
+      leadTime: leadTimeRaw ? parseInt(leadTimeRaw, 10) : textLeadTime,
+      repeat,
+      location: form.elements.location.value.trim(),
+      description: form.elements.description.value.trim()
+    };
+  }
+
+  function makeEntryPayload(draft, existing = {}) {
+    return {
+      ...existing,
+      text: draft.text,
+      done: existing.done || false,
+      time: draft.time,
+      endTime: draft.endTime,
+      allDay: draft.allDay,
+      leadTime: draft.leadTime ?? null,
+      isEvent: draft.isEvent,
+      location: draft.location,
+      description: draft.description
+    };
+  }
+
+  function makeRecurringPayload(draft, date, existing = {}) {
+    const freq = freqFromRepeatChoice(draft.repeat, date);
+    return {
+      ...existing,
+      text: draft.text,
+      time: draft.time,
+      endTime: draft.endTime,
+      allDay: draft.allDay,
+      startDate: date,
+      doneDate: existing.doneDate ?? null,
+      frequency: freq.frequency,
+      dayOfWeek: freq.dayOfWeek,
+      month: freq.month,
+      dayOfMonth: freq.dayOfMonth,
+      leadTime: draft.leadTime ?? null,
+      isEvent: draft.isEvent,
+      location: draft.location,
+      description: draft.description
+    };
+  }
+
+  function saveEntryEditor() {
+    const draft = collectEntryEditorDraft();
+    if (!draft || !entryEditorContext) return;
+    const context = entryEditorContext;
+
+    if (context.mode === 'create') {
+      if (draft.repeat) {
+        const rec = makeRecurringPayload(draft, draft.date, { id: crypto.randomUUID() });
+        recurring.push(rec);
+        saveRecurring();
+        if (rec.isEvent) maybeAutoSendEventToGoogleCalendar(getCalendarEventForAction(rec.startDate, rec.id, rec.id) || {
+          id: rec.id,
+          date: rec.startDate,
+          text: rec.text,
+          time: rec.time,
+          endTime: rec.endTime,
+          allDay: rec.allDay,
+          leadTime: rec.leadTime,
+          location: rec.location,
+          description: rec.description,
+          recurring: rec
+        });
+      } else {
+        if (!notes[draft.date]) notes[draft.date] = [];
+        const note = makeEntryPayload(draft, { id: crypto.randomUUID() });
+        notes[draft.date].push(note);
+        notes[draft.date] = sortNotesByTime(notes[draft.date]);
+        saveNotes(notes);
+        if (note.isEvent) maybeAutoSendEventToGoogleCalendar({
+          id: note.id,
+          date: draft.date,
+          text: note.text,
+          time: note.time,
+          endTime: note.endTime,
+          allDay: note.allDay,
+          leadTime: note.leadTime,
+          location: note.location,
+          description: note.description
+        });
+      }
+      closeEntryEditor();
+      render();
+      return;
+    }
+
+    if (context.recurringId) {
+      const rec = recurring.find(r => r.id === context.recurringId);
+      if (!rec) return closeEntryEditor(), render();
+      if (draft.repeat) {
+        Object.assign(rec, makeRecurringPayload(draft, draft.date, rec));
+        saveRecurring();
+      } else {
+        recurring = recurring.filter(r => r.id !== context.recurringId);
+        if (!notes[draft.date]) notes[draft.date] = [];
+        notes[draft.date].push(makeEntryPayload(draft, { id: crypto.randomUUID(), done: false }));
+        notes[draft.date] = sortNotesByTime(notes[draft.date]);
+        saveRecurring();
+        saveNotes(notes);
+      }
+      closeEntryEditor();
+      render();
+      return;
+    }
+
+    const oldDate = context.date;
+    const note = (notes[oldDate] || []).find(n => n.id === context.id);
+    if (!note) return closeEntryEditor(), render();
+    if (draft.repeat) {
+      recurring.push(makeRecurringPayload(draft, draft.date, { id: crypto.randomUUID(), doneDate: null }));
+      notes[oldDate] = (notes[oldDate] || []).filter(n => n.id !== context.id);
+      if (notes[oldDate].length === 0) delete notes[oldDate];
+      saveRecurring();
+      saveNotes(notes);
+    } else {
+      const updated = makeEntryPayload(draft, note);
+      if (draft.date !== oldDate) {
+        notes[oldDate] = (notes[oldDate] || []).filter(n => n.id !== context.id);
+        if (notes[oldDate].length === 0) delete notes[oldDate];
+        if (!notes[draft.date]) notes[draft.date] = [];
+        notes[draft.date].push(updated);
+      } else {
+        Object.assign(note, updated);
+      }
+      notes[draft.date] = sortNotesByTime(notes[draft.date] || [updated]);
+      saveNotes(notes);
+    }
+    closeEntryEditor();
+    render();
+  }
+
   // Event delegation
   doc.addEventListener('click', (e) => {
     // Check link-delete first with direct matching (before closest)
@@ -1905,343 +2280,12 @@
         }
       }
 
-      const noteText = noteItem.querySelector('.note-text');
-      if (!noteText) return;
-
-      // Get raw text, current leadTime, and isEvent
-      let rawText, currentLeadTime, currentIsEvent;
-      if (recurringId) {
-        const rec = recurring.find(r => r.id === recurringId);
-        rawText = rec ? rec.text : '';
-        currentLeadTime = rec ? rec.leadTime : null;
-        currentIsEvent = rec ? (rec.isEvent ?? true) : true;
-      } else {
-        const dayNotes = notes[date] || [];
-        const note = dayNotes.find(n => n.id === id);
-        rawText = note ? note.text : '';
-        currentLeadTime = note ? note.leadTime : null;
-        currentIsEvent = note ? (note.isEvent ?? true) : true;
-      }
-
-      // Build edit wrapper: textarea + compact option bar (accordion-style panels)
-      const editWrap = document.createElement('div');
-      editWrap.className = 'note-edit-wrap';
-
-      const textarea = document.createElement('textarea');
-      textarea.className = 'note-edit-input';
-      textarea.spellcheck = false;
-      textarea.value = rawText;
-      textarea.rows = 1;
-
-      let selectedLeadTime = currentLeadTime;
-      const leadOptions = [
-        [0, 'Ingen'], [5, '5 min'], [15, '15 min'],
-        [30, '30 min'], [60, '1 time'], [1440, '1 dag']
-      ];
-
-      let selectedIsEvent = currentIsEvent;
-
-      const prefixMap = {
-        daily: 'mind mig hver dag om at ',
-        weekly: 'mind mig hver uge om at ',
-        biweekly: 'mind mig hver 14. dag om at ',
-        monthly: 'mind mig hver m\u00e5ned om at ',
-        yearly: 'mind mig hvert \u00e5r om at '
-      };
-
-      let selectedRepeat = null;
-      const repeatChoices = [
-        [null, 'Ingen'],
-        ['daily', 'Daglig'],
-        ['weekly', 'Ugentlig'],
-        ['biweekly', 'Hver 14. dag'],
-        ['monthly', 'M\u00e5nedlig'],
-        ['yearly', '\u00c5rlig']
-      ];
-      if (recurringId) {
-        const _recInit = recurring.find(r => r.id === recurringId);
-        selectedRepeat = _recInit && _recInit.frequency ? _recInit.frequency : 'daily';
-      }
-
-      const reminderRow = document.createElement('div');
-      reminderRow.className = 'edit-reminder-row';
-      leadOptions.forEach(([mins, label]) => {
-        const btn = document.createElement('button');
-        btn.className = 'reminder-option' + ((mins === 0 && (currentLeadTime == null || currentLeadTime === undefined)) || mins === currentLeadTime ? ' selected' : '');
-        btn.textContent = label;
-        btn.type = 'button';
-        btn.addEventListener('mousedown', (ev) => {
-          ev.preventDefault();
-          selectedLeadTime = mins === 0 ? null : mins;
-          reminderRow.querySelectorAll('.reminder-option').forEach(b => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          refreshReminderSummary();
-          closeEditPanels();
-        });
-        reminderRow.appendChild(btn);
-      });
-
-      const typeRow = document.createElement('div');
-      typeRow.className = 'edit-reminder-row';
-      const eventBtn = document.createElement('button');
-      eventBtn.className = 'reminder-option' + (currentIsEvent ? ' selected' : '');
-      eventBtn.textContent = '\u{1f4c5} Event';
-      eventBtn.type = 'button';
-      eventBtn.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();
-        selectedIsEvent = true;
-        eventBtn.classList.add('selected');
-        taskBtn.classList.remove('selected');
-        refreshTypeSummary();
-        closeEditPanels();
-      });
-
-      const taskBtn = document.createElement('button');
-      taskBtn.className = 'reminder-option' + (!currentIsEvent ? ' selected' : '');
-      taskBtn.textContent = '\u2610 Task';
-      taskBtn.type = 'button';
-      taskBtn.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();
-        selectedIsEvent = false;
-        taskBtn.classList.add('selected');
-        eventBtn.classList.remove('selected');
-        refreshTypeSummary();
-        closeEditPanels();
-      });
-
-      typeRow.appendChild(eventBtn);
-      typeRow.appendChild(taskBtn);
-
-      const repeatChoicesForRow = recurringId
-        ? repeatChoices.filter(([f]) => f !== null)
-        : repeatChoices;
-      const repeatRow = document.createElement('div');
-      repeatRow.className = 'edit-reminder-row edit-repeat-row';
-      repeatChoicesForRow.forEach(([freq, label]) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        const isSel = (freq === null && selectedRepeat == null) || freq === selectedRepeat;
-        btn.className = 'reminder-option edit-repeat-option' + (isSel ? ' selected' : '');
-        btn.textContent = label;
-        btn.addEventListener('mousedown', (ev) => {
-          ev.preventDefault();
-          selectedRepeat = freq;
-          repeatRow.querySelectorAll('.edit-repeat-option').forEach(b => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          refreshRepeatSummary();
-          closeEditPanels();
-        });
-        repeatRow.appendChild(btn);
-      });
-
-      const optsBar = document.createElement('div');
-      optsBar.className = 'edit-opts-bar';
-      const panelsWrap = document.createElement('div');
-      panelsWrap.className = 'edit-opts-panels';
-
-      let openEditPanel = null;
-      function setOpenEditPanel(id) {
-        openEditPanel = id;
-        panelsWrap.querySelectorAll('.edit-opts-panel').forEach(p => {
-          const pid = p.dataset.editPanel;
-          p.classList.toggle('is-open', id !== null && pid === id);
-        });
-        optsBar.querySelectorAll('.edit-opts-trigger').forEach(t => {
-          t.classList.toggle('is-open', id !== null && t.dataset.editPanel === id);
-        });
-      }
-      function closeEditPanels() {
-        setOpenEditPanel(null);
-      }
-
-      function makeTrigger(title, panelId) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'edit-opts-trigger';
-        b.dataset.editPanel = panelId;
-        const t = document.createElement('span');
-        t.className = 'edit-opts-trigger-title';
-        t.textContent = title;
-        const s = document.createElement('span');
-        s.className = 'edit-opts-summary';
-        b.appendChild(t);
-        b.appendChild(s);
-        b.addEventListener('mousedown', (ev) => {
-          ev.preventDefault();
-          const next = openEditPanel === panelId ? null : panelId;
-          setOpenEditPanel(next);
-        });
-        return { btn: b, summary: s };
-      }
-
-      const remTrig = makeTrigger('P\u00e5mindelse', 'reminder');
-      const typeTrig = makeTrigger('Type', 'type');
-
-      function refreshReminderSummary() {
-        const found = leadOptions.find(([m]) =>
-          (m === 0 && (selectedLeadTime == null || selectedLeadTime === undefined)) || m === selectedLeadTime
-        );
-        remTrig.summary.textContent = found ? found[1] : 'Ingen';
-      }
-
-      function refreshTypeSummary() {
-        typeTrig.summary.textContent = selectedIsEvent ? 'Begivenhed' : 'Opgave';
-      }
-
-      const repTrig = makeTrigger('Gentagelse', 'repeat');
-
-      function refreshRepeatSummary() {
-        const found = repeatChoices.find(([f]) =>
-          (f === null && selectedRepeat == null) || f === selectedRepeat
-        );
-        repTrig.summary.textContent = found ? found[1] : 'Ingen';
-      }
-
-      refreshReminderSummary();
-      refreshTypeSummary();
-      refreshRepeatSummary();
-
-      optsBar.appendChild(remTrig.btn);
-      optsBar.appendChild(typeTrig.btn);
-      optsBar.appendChild(repTrig.btn);
-
-      const panelReminder = document.createElement('div');
-      panelReminder.className = 'edit-opts-panel';
-      panelReminder.dataset.editPanel = 'reminder';
-      panelReminder.appendChild(reminderRow);
-
-      const panelType = document.createElement('div');
-      panelType.className = 'edit-opts-panel';
-      panelType.dataset.editPanel = 'type';
-      panelType.appendChild(typeRow);
-
-      panelsWrap.appendChild(panelReminder);
-      panelsWrap.appendChild(panelType);
-
-      const panelRepeat = document.createElement('div');
-      panelRepeat.className = 'edit-opts-panel';
-      panelRepeat.dataset.editPanel = 'repeat';
-      panelRepeat.appendChild(repeatRow);
-      panelsWrap.appendChild(panelRepeat);
-
-      editWrap.appendChild(textarea);
-      editWrap.appendChild(optsBar);
-      editWrap.appendChild(panelsWrap);
-      noteText.replaceWith(editWrap);
-      textarea.style.height = 'auto';
-      textarea.style.height = textarea.scrollHeight + 'px';
-      textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-
-      let saved = false;
-      function saveEdit() {
-        if (saved) return;
-        saved = true;
-        const newText = textarea.value.trim();
-        if (!newText) {
-          render(); // empty = cancel
-          return;
-        }
-        if (recurringId) {
-          const rec = recurring.find(r => r.id === recurringId);
-          if (rec) {
-            rec.text = applySmartLinks(newText);
-            const { time } = parseTimeFromText(newText);
-            if (time) rec.time = time;
-            rec.leadTime = selectedLeadTime;
-            rec.isEvent = selectedIsEvent;
-            if (selectedRepeat) {
-              const f = freqFromRepeatChoice(selectedRepeat, date);
-              const oldSig = [rec.frequency, rec.dayOfWeek ?? '', rec.month ?? '', rec.dayOfMonth ?? ''].join('|');
-              rec.frequency = f.frequency;
-              if ('dayOfWeek' in f) rec.dayOfWeek = f.dayOfWeek;
-              else delete rec.dayOfWeek;
-              if ('month' in f) rec.month = f.month;
-              else delete rec.month;
-              if ('dayOfMonth' in f) rec.dayOfMonth = f.dayOfMonth;
-              else delete rec.dayOfMonth;
-              const newSig = [rec.frequency, rec.dayOfWeek ?? '', rec.month ?? '', rec.dayOfMonth ?? ''].join('|');
-              if (oldSig !== newSig) rec.startDate = date;
-            }
-            saveRecurring();
-          }
-        } else if (selectedRepeat) {
-          const dayNotes = notes[date] || [];
-          const note = dayNotes.find(n => n.id === id);
-          if (!note) {
-            render();
-            return;
-          }
-          let t = capitalizeFirst(newText.trim());
-          t = applySmartLinks(t);
-          if (!recurringRegex.test(t)) {
-            t = prefixMap[selectedRepeat] + t;
-          }
-          const freq = isRecurringRequest(t)
-            ? parseRecurringFrequency(t, date)
-            : freqFromRepeatChoice(selectedRepeat, date);
-          const rawForClean = isRecurringRequest(t)
-            ? t
-            : (prefixMap[selectedRepeat] + capitalizeFirst(newText.trim()));
-          const fullForTime = isRecurringRequest(t) ? t : applySmartLinks(rawForClean);
-          let cleanText = applySmartLinks(cleanRecurringText(rawForClean));
-          const { time: parsedTime } = parseTimeFromText(fullForTime);
-          const leadTime = selectedLeadTime ?? parseLeadTime(fullForTime) ?? null;
-          if (leadTime !== null) cleanText = cleanLeadTimeText(cleanText);
-          recurring.push({
-            id: crypto.randomUUID(),
-            text: cleanText || cleanRecurringText(rawForClean) || newText,
-            time: parsedTime || note.time || null,
-            startDate: date,
-            doneDate: null,
-            frequency: freq.frequency,
-            dayOfWeek: freq.dayOfWeek,
-            month: freq.month,
-            dayOfMonth: freq.dayOfMonth,
-            leadTime: leadTime ?? null,
-            isEvent: selectedIsEvent
-          });
-          notes[date] = (notes[date] || []).filter(n => n.id !== id);
-          if (notes[date].length === 0) delete notes[date];
-          saveRecurring();
-          saveNotes(notes);
-        } else {
-          const dayNotes = notes[date] || [];
-          const note = dayNotes.find(n => n.id === id);
-          if (note) {
-            note.text = applySmartLinks(newText);
-            const { time } = parseTimeFromText(newText);
-            if (time) note.time = time;
-            note.leadTime = selectedLeadTime;
-            note.isEvent = selectedIsEvent;
-            notes[date] = sortNotesByTime(notes[date]);
-            saveNotes(notes);
-          }
-        }
-        render();
-      }
-
-      textarea.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter' && !ev.shiftKey) {
-          ev.preventDefault();
-          saveEdit();
-        }
-        if (ev.key === 'Escape') {
-          if (openEditPanel) {
-            closeEditPanels();
-            ev.preventDefault();
-            return;
-          }
-          render(); // cancel
-        }
-      });
-      textarea.addEventListener('blur', (ev) => {
-        if (ev.relatedTarget && editWrap.contains(ev.relatedTarget)) return;
-        setTimeout(() => saveEdit(), 0);
-      });
-      textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
+      openEntryEditor({
+        mode: 'edit',
+        date,
+        id,
+        recurringId,
+        anchorEl: noteWrap || noteItem
       });
       return;
     }
@@ -2261,178 +2305,10 @@
       return;
     }
 
-    if (target.classList.contains('quick-action')) {
-      const area = target.closest('.add-note-area');
-      const qa = area.querySelector('.quick-actions');
-      const qaType = target.dataset.qa;
-
-      if (qaType === 'close') {
-        qa.classList.remove('visible');
-        return;
-      }
-
-      const btn = area.querySelector('.add-note-btn');
-      const form = area.querySelector('.add-note-form');
-      const date = target.dataset.date;
-      qa.classList.remove('visible');
-      btn.classList.add('hidden');
-      form.classList.add('active');
-      const textarea = form.querySelector('textarea');
-
-      if (qaType === 'task') {
-        form.dataset.isTask = '1';
-        const taskBtn = form.querySelector('.task-toggle-btn');
-        if (taskBtn) taskBtn.classList.add('active');
-      }
-      if (['daily','weekly','biweekly','monthly','yearly'].includes(qaType)) {
-        const prefixMap = {
-          daily: 'mind mig hver dag om at ',
-          weekly: 'mind mig hver uge om at ',
-          biweekly: 'mind mig hver 14. dag om at ',
-          monthly: 'mind mig hver m\u00e5ned om at ',
-          yearly: 'mind mig hvert \u00e5r om at '
-        };
-        textarea.value = prefixMap[qaType];
-      }
-      textarea.focus();
-      return;
-    }
-
     if (target.classList.contains('add-note-btn')) {
-      const area = target.closest('.add-note-area');
-      const qa = area.querySelector('.quick-actions');
-      qa.classList.remove('visible');
-      target.classList.add('hidden');
-      const form = target.nextElementSibling;
-      form.classList.add('active');
-      form.querySelector('textarea').focus();
-      return;
-    }
-
-    if (target.classList.contains('cancel-note-btn')) {
-      const area = target.closest('.add-note-area');
-      const form = area.querySelector('.add-note-form');
-      const btn = area.querySelector('.add-note-btn');
-      form.classList.remove('active');
-      form.querySelector('textarea').value = '';
-      form.querySelector('.reminder-options').classList.add('hidden');
-      form.querySelector('.recurring-options').classList.add('hidden');
-      delete form.dataset.leadTime;
-      delete form.dataset.isTask;
-      const taskBtn = form.querySelector('.task-toggle-btn');
-      if (taskBtn) taskBtn.classList.remove('active');
-      const reminderBtn = form.querySelector('.reminder-menu-btn');
-      if (reminderBtn) reminderBtn.classList.remove('active');
-      btn.classList.remove('hidden');
-      return;
-    }
-
-    if (target.classList.contains('save-note-btn')) {
       const date = target.dataset.date;
-      const form = target.closest('.add-note-form');
-      const textarea = form.querySelector('textarea');
-      const uiLeadTime = form.dataset.leadTime ? parseInt(form.dataset.leadTime) : null;
-      const isTask = form.dataset.isTask === '1';
-      addNote(date, textarea.value, uiLeadTime, !isTask);
+      openEntryEditor({ mode: 'create', date, anchorEl: target });
       return;
-    }
-
-    // Toggle reminder options menu
-    if (target.classList.contains('reminder-menu-btn')) {
-      const form = target.closest('.add-note-form');
-      const options = form.querySelector('.reminder-options');
-      form.querySelector('.recurring-options').classList.add('hidden');
-      options.classList.toggle('hidden');
-      return;
-    }
-
-    // Reminder option selected
-    if (target.classList.contains('reminder-option')) {
-      const mins = parseInt(target.dataset.mins);
-      const form = target.closest('.add-note-form');
-      const options = form.querySelector('.reminder-options');
-      const btn = form.querySelector('.reminder-menu-btn');
-
-      // Store selected lead time on the form
-      if (mins === 0) {
-        delete form.dataset.leadTime;
-        btn.textContent = '\u23f0';
-        btn.classList.remove('active');
-      } else {
-        form.dataset.leadTime = mins;
-        const label = mins >= 1440 ? (mins / 1440) + 'd' : mins >= 60 ? (mins / 60) + 'h' : mins + 'm';
-        btn.textContent = '\u23f0' + label;
-        btn.classList.add('active');
-      }
-
-      // Highlight selected option
-      options.querySelectorAll('.reminder-option').forEach(o => o.classList.remove('selected'));
-      target.classList.add('selected');
-      options.classList.add('hidden');
-      form.querySelector('textarea').focus();
-      return;
-    }
-
-    // Toggle task mode (default is event)
-    if (target.classList.contains('task-toggle-btn')) {
-      target.classList.toggle('active');
-      const form = target.closest('.add-note-form');
-      form.dataset.isTask = target.classList.contains('active') ? '1' : '';
-      return;
-    }
-
-    // Toggle recurring options menu
-    if (target.classList.contains('recurring-menu-btn')) {
-      const form = target.closest('.add-note-form');
-      const options = form.querySelector('.recurring-options');
-      form.querySelector('.reminder-options').classList.add('hidden');
-      options.classList.toggle('hidden');
-      return;
-    }
-
-    // Recurring option selected
-    if (target.classList.contains('recurring-option')) {
-      const freq = target.dataset.freq;
-      const form = target.closest('.add-note-form');
-      const textarea = form.querySelector('textarea');
-      const options = form.querySelector('.recurring-options');
-
-      const prefixMap = {
-        daily: 'mind mig hver dag om at ',
-        weekly: 'mind mig hver uge om at ',
-        biweekly: 'mind mig hver 14. dag om at ',
-        monthly: 'mind mig hver m\u00e5ned om at ',
-        yearly: 'mind mig hvert \u00e5r om at '
-      };
-
-      // Prepend prefix if not already recurring
-      const currentText = textarea.value.trim();
-      if (!recurringRegex.test(currentText)) {
-        textarea.value = prefixMap[freq] + currentText;
-      }
-
-      options.classList.add('hidden');
-      textarea.focus();
-      return;
-    }
-  });
-
-  doc.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && e.target.matches('.add-note-form textarea')) {
-      if (calendarSmartListMenuOpen) return;
-      e.preventDefault();
-      const form = e.target.closest('.add-note-form');
-      const uiLeadTime = form?.dataset.leadTime ? parseInt(form.dataset.leadTime) : null;
-      const isTask = form?.dataset.isTask === '1';
-      addNote(e.target.dataset.date, e.target.value, uiLeadTime, !isTask);
-    }
-  });
-
-  doc.addEventListener('input', (e) => {
-    if (e.target.matches('.add-note-form textarea')) {
-      e.target.style.height = 'auto';
-      e.target.style.height = e.target.scrollHeight + 'px';
-      updateCalendarSmartListMenu(e.target);
     }
   });
 
@@ -2452,9 +2328,18 @@
         ta.value = v.slice(0, token.start) + v.slice(cur);
         ta.selectionStart = ta.selectionEnd = token.start;
       }
+      if (ta.classList.contains('entry-editor-title')) closeEntryEditor();
       addSmartListNote(date, type);
     }
     hideCalendarSmartListMenu();
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!entryEditorEl) return;
+    if (e.target.closest('.entry-editor-popover')) return;
+    if (e.target.closest('.add-note-btn')) return;
+    if (e.target.closest('#calendarSmartListMenu')) return;
+    closeEntryEditor();
   });
 
   document.addEventListener('click', (e) => {
@@ -2512,47 +2397,6 @@
       textarea.setRangeText(replacement, start, end, 'end');
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
-  });
-
-  function bindEvents() {
-    // Hover to show quick actions on desktop
-    doc.querySelectorAll('.add-note-btn').forEach(btn => {
-      let hoverTimeout;
-      const area = btn.closest('.add-note-area');
-      const qa = area.querySelector('.quick-actions');
-
-      btn.addEventListener('mouseenter', () => {
-        hoverTimeout = setTimeout(() => {
-          qa.classList.add('visible');
-        }, 400);
-      });
-      btn.addEventListener('mouseleave', () => {
-        clearTimeout(hoverTimeout);
-      });
-      area.addEventListener('mouseleave', () => {
-        clearTimeout(hoverTimeout);
-        qa.classList.remove('visible');
-      });
-
-      // Long-press for mobile
-      let pressTimer;
-      btn.addEventListener('touchstart', (e) => {
-        pressTimer = setTimeout(() => {
-          e.preventDefault();
-          qa.classList.add('visible');
-        }, 500);
-      }, { passive: false });
-      btn.addEventListener('touchend', () => clearTimeout(pressTimer));
-      btn.addEventListener('touchmove', () => clearTimeout(pressTimer));
-    });
-  }
-
-  // Tap outside to dismiss quick actions and open add-note forms on mobile
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('.quick-actions') || e.target.closest('.add-note-btn')) return;
-    doc.querySelectorAll('.quick-actions.visible').forEach(qa => {
-      qa.classList.remove('visible');
-    });
   });
 
   // Tap on note to reveal/hide actions on mobile
@@ -2726,10 +2570,14 @@
         text: r.text,
         done: false,
         time: r.time || '',
+        endTime: r.endTime || '',
+        allDay: r.allDay ?? !r.time,
         isRecurring: true,
         frequency: r.frequency || 'daily',
         leadTime: r.leadTime ?? null,
-        isEvent: r.isEvent || false
+        isEvent: r.isEvent || false,
+        location: r.location || '',
+        description: r.description || ''
       }));
   }
 
@@ -2750,80 +2598,6 @@
   function capitalizeFirst(s) {
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
-  }
-
-  function addNote(date, text, uiLeadTime, isEvent) {
-    text = text.trim();
-    if (!text) return;
-
-    text = capitalizeFirst(text);
-    text = applySmartLinks(text);
-
-    if (isRecurringRequest(text)) {
-      const { time: parsedTime } = parseTimeFromText(text);
-      const leadTime = uiLeadTime || parseLeadTime(text);
-      const freq = parseRecurringFrequency(text, date);
-      let cleanText = applySmartLinks(cleanRecurringText(text));
-      if (leadTime !== null) cleanText = cleanLeadTimeText(cleanText);
-      const rec = {
-        id: crypto.randomUUID(),
-        text: cleanText || text,
-        time: parsedTime || null,
-        startDate: date,
-        doneDate: null,
-        frequency: freq.frequency,
-        dayOfWeek: freq.dayOfWeek,
-        month: freq.month,
-        dayOfMonth: freq.dayOfMonth,
-        leadTime: leadTime,
-        isEvent: isEvent || false
-      };
-      recurring.push(rec);
-      saveRecurring();
-      if (rec.isEvent) {
-        maybeAutoSendEventToGoogleCalendar({
-          id: rec.id,
-          date: rec.startDate,
-          text: rec.text,
-          time: rec.time || null,
-          leadTime: rec.leadTime ?? null,
-          recurring: rec
-        });
-      }
-      render();
-      return;
-    }
-
-    if (!notes[date]) notes[date] = [];
-
-    const { time: parsedTime } = parseTimeFromText(text);
-    const textLeadTime = parseLeadTime(text);
-    if (textLeadTime !== null) text = cleanLeadTimeText(text);
-    const leadTime = uiLeadTime || textLeadTime;
-
-    const note = {
-      id: crypto.randomUUID(),
-      text,
-      done: false,
-      time: parsedTime || null,
-      leadTime: leadTime,
-      isEvent: isEvent || false
-    };
-
-    notes[date].push(note);
-
-    notes[date] = sortNotesByTime(notes[date]);
-    saveNotes(notes);
-    if (note.isEvent) {
-      maybeAutoSendEventToGoogleCalendar({
-        id: note.id,
-        date,
-        text: note.text,
-        time: note.time || null,
-        leadTime: note.leadTime ?? null
-      });
-    }
-    render();
   }
 
   function addSmartListNote(date, listType) {
@@ -3840,7 +3614,7 @@
     telegramChatId: '8493934471',
     leadTime: 15,
     phoneAlarmEnabled: true,
-    morningBriefing: false,
+    morningBriefing: true,
     morningTime: '06:30',
     timeZone: '',
     googleCalendarAutoSend: false
@@ -4172,6 +3946,7 @@
     const regularNotes = sortNotesByTime(dayRaw.filter(n => !n.smartList && !n.done));
     const recurringNotes = getRecurringForDate(todayKey).filter(n => !n.done);
     const allNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
+    const calendarEntries = allNotes.filter(n => n.isEvent === true);
 
     const todoBlocks = [];
     for (const n of smartTodoNotes) {
@@ -4206,7 +3981,7 @@
     const hasTodo = todoBlocks.length > 0;
     const hasShop = shopBlocks.length > 0;
 
-    if (allNotes.length === 0 && !hasTodo && !hasShop) return null;
+    if (calendarEntries.length === 0) return null;
 
     let msg = `<b>Good morning, sir.</b>\n`;
     msg += `<i>Your ${dayName} briefing &mdash; ${monthName} ${dayNum}</i>\n\n`;

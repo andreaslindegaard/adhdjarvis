@@ -1472,17 +1472,21 @@
     }
 
     .add-note-btn {
-      background: none;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
       border: 1.5px dashed var(--border);
       color: var(--text-dim);
-      padding: 7px 14px;
-      border-radius: var(--radius);
+      padding: 0;
+      border-radius: 999px;
       cursor: pointer;
-      font-size: 0.82rem;
+      font-size: 1.15rem;
       font-family: inherit;
-      font-weight: 500;
-      width: 100%;
-      text-align: left;
+      font-weight: 600;
+      line-height: 1;
       transition: all 0.15s ease;
     }
 
@@ -1492,213 +1496,202 @@
       background: var(--accent-soft);
     }
 
-    .quick-actions {
-      display: none;
-      position: absolute;
-      bottom: calc(100% + 4px);
-      left: 0;
-      right: 0;
+    .entry-editor-popover {
+      position: fixed;
+      z-index: 180;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 6px 8px;
-      box-shadow: var(--shadow-lg);
-      z-index: 50;
-      gap: 4px;
-      flex-wrap: wrap;
-      animation: quickActionsIn 0.12s ease-out;
-    }
-
-    @keyframes quickActionsIn {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .quick-actions.visible {
-      display: flex;
-    }
-
-    .quick-actions-label {
-      font-size: 0.68rem;
-      font-weight: 600;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      width: 100%;
-      padding: 2px 4px 0;
-    }
-
-    .quick-action {
-      background: var(--bg);
-      color: var(--text-secondary);
       border: 1px solid var(--border-light);
-      padding: 4px 10px;
-      border-radius: 20px;
-      cursor: pointer;
-      font-size: 0.73rem;
-      font-family: inherit;
-      font-weight: 500;
-      transition: all 0.12s ease;
-      white-space: nowrap;
-    }
-
-    .quick-action:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-soft);
-    }
-
-    .add-note-form {
-      display: none;
-    }
-
-    .add-note-form.active { display: flex; flex-direction: column; gap: 6px; }
-
-    .add-note-form .form-row {
-      display: flex;
-      gap: 6px;
-      align-items: flex-end;
-    }
-
-    .add-note-form textarea {
-      flex: 1;
-      background: var(--surface);
-      border: 1.5px solid var(--accent);
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
       color: var(--text);
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      font-size: 0.88rem;
-      font-family: inherit;
-      resize: vertical;
-      min-height: 40px;
-      line-height: 1.55;
+      overflow: hidden;
+    }
+
+    .entry-editor-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .entry-editor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .entry-editor-head h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .entry-editor-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .entry-editor-title,
+    .entry-editor-field input,
+    .entry-editor-field textarea,
+    .entry-editor-grid input,
+    .entry-editor-grid select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      box-sizing: border-box;
+    }
+
+    .entry-editor-title {
+      border: none;
+      border-bottom: 1px solid var(--border-light);
+      border-radius: 0;
+      padding: 6px 0 10px;
+      resize: none;
+      min-height: 42px;
+      font-size: 1.18rem;
+      font-weight: 600;
+      overflow: hidden;
+    }
+
+    .entry-editor-title:focus,
+    .entry-editor-field input:focus,
+    .entry-editor-field textarea:focus,
+    .entry-editor-grid input:focus,
+    .entry-editor-grid select:focus {
+      outline: none;
+      border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-soft);
     }
 
-    .add-note-form textarea::placeholder { color: var(--text-dim); }
-    .add-note-form textarea:focus { outline: none; }
+    .entry-editor-title:focus {
+      box-shadow: none;
+    }
 
-    .add-note-form .save-note-btn {
+    .entry-editor-type {
+      display: inline-flex;
+      width: fit-content;
+      padding: 3px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      gap: 3px;
+    }
+
+    .entry-type-btn {
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 6px 12px;
+    }
+
+    .entry-type-btn.active {
+      background: var(--surface);
+      color: var(--accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .entry-editor-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .entry-editor-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
+      gap: 8px;
+    }
+
+    .entry-editor-grid--two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entry-editor-grid label,
+    .entry-editor-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .entry-editor-field input,
+    .entry-editor-field textarea,
+    .entry-editor-grid input,
+    .entry-editor-grid select {
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 0.86rem;
+      color: var(--text);
+    }
+
+    .entry-editor-field textarea {
+      min-height: 78px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .entry-editor-error {
+      min-height: 16px;
+      margin: -2px 0 0;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .entry-editor-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 2px;
+    }
+
+    .entry-editor-actions button {
+      min-height: 36px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.84rem;
+      font-weight: 700;
+      padding: 8px 16px;
+    }
+
+    .entry-editor-secondary {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+    }
+
+    .entry-editor-primary {
+      border: 1px solid var(--accent);
       background: var(--accent);
       color: white;
-      border: none;
-      padding: 8px 18px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 0.82rem;
-      font-family: inherit;
-      transition: background 0.15s ease;
     }
 
-    .add-note-form .save-note-btn:hover { background: var(--accent-hover); }
-
-    .cancel-note-btn {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text-dim);
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 1rem;
-      font-family: inherit;
-      line-height: 1;
-      transition: all 0.15s ease;
-    }
-
-    .cancel-note-btn:hover {
-      border-color: var(--text-dim);
-      color: var(--text-secondary);
-      background: var(--surface-hover);
-    }
-
-    .quick-action-close {
-      background: var(--surface) !important;
-      color: var(--text-dim) !important;
-      border-color: var(--border) !important;
-      font-size: 1rem;
-      padding: 4px 12px;
-    }
-
-    .quick-action-close:hover {
-      color: var(--accent) !important;
-    }
-
-    .reminder-menu-btn, .recurring-menu-btn {
-      background: var(--surface) !important;
-      color: var(--accent) !important;
-      border: 1.5px solid var(--border) !important;
-      padding: 6px 10px !important;
-      border-radius: var(--radius-sm) !important;
-      cursor: pointer;
-      font-size: 0.85rem !important;
-      transition: all 0.15s ease;
-      line-height: 1;
-      white-space: nowrap;
-    }
-
-    .reminder-menu-btn:hover, .recurring-menu-btn:hover {
-      border-color: var(--accent) !important;
-      background: var(--accent-soft) !important;
-    }
-
-    .reminder-menu-btn.active {
-      background: var(--accent-bg) !important;
-      border-color: var(--accent) !important;
-    }
-
-    .reminder-options {
-      display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
-    }
-
-    .reminder-option {
-      background: var(--surface) !important;
-      color: var(--text-secondary) !important;
-      border: 1px solid var(--border) !important;
-      padding: 5px 10px !important;
-      border-radius: 20px !important;
-      cursor: pointer;
-      font-size: 0.75rem !important;
-      font-weight: 500 !important;
-      transition: all 0.15s ease;
-    }
-
-    .reminder-option:hover {
-      border-color: var(--accent) !important;
-      color: var(--accent) !important;
-      background: var(--accent-soft) !important;
-    }
-
-    .reminder-option.selected {
-      background: var(--accent) !important;
-      color: white !important;
-      border-color: var(--accent) !important;
-    }
-
-    .recurring-options {
-      display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
-    }
-
-    .recurring-option {
-      background: var(--surface) !important;
-      color: var(--text-secondary) !important;
-      border: 1px solid var(--border) !important;
-      padding: 5px 10px !important;
-      border-radius: 20px !important;
-      cursor: pointer;
-      font-size: 0.75rem !important;
-      font-weight: 500 !important;
-      transition: all 0.15s ease;
-    }
-
-    .recurring-option:hover {
-      border-color: var(--accent) !important;
-      color: var(--accent) !important;
-      background: var(--accent-soft) !important;
+    .entry-editor-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
     }
 
     /* Week number marker in timeline */
@@ -1906,54 +1899,33 @@
       }
       .note-text { font-size: 0.85rem; }
 
-      /* --- Add note form: stacked --- */
+      /* --- Add entry button/editor --- */
       .add-note-area { margin-right: 0; }
 
-      .add-note-form .form-row {
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .add-note-form .form-row textarea {
-        width: 100%;
-        flex: 1 1 100%;
-        min-height: 44px;
-      }
-      .reminder-menu-btn,
-      .recurring-menu-btn,
-      .task-toggle-btn {
-        min-height: 40px !important;
-        padding: 8px 12px !important;
-        font-size: 0.82rem !important;
-      }
-      .add-note-form .save-note-btn {
-        min-height: 40px;
-        padding: 8px 16px;
-        flex: 1;
-      }
-      .cancel-note-btn {
-        min-height: 40px;
-        padding: 8px 14px;
-        font-size: 1.1rem;
-      }
-
-      .reminder-options,
-      .recurring-options {
-        gap: 6px;
-      }
-      .reminder-option,
-      .recurring-option {
-        padding: 8px 14px !important;
-        font-size: 0.8rem !important;
-      }
-
-      /* --- Quick actions: bigger tap targets --- */
-      .quick-action {
-        padding: 8px 14px;
-        font-size: 0.8rem;
-      }
       .add-note-btn {
-        padding: 10px 14px;
-        font-size: 0.85rem;
+        width: 36px;
+        height: 36px;
+        font-size: 1.2rem;
+      }
+
+      .entry-editor-popover {
+        left: 0 !important;
+        right: 0;
+        bottom: 0;
+        top: auto !important;
+        width: 100% !important;
+        max-height: calc(100vh - 64px);
+        border-radius: 14px 14px 0 0;
+        overflow-y: auto;
+      }
+
+      .entry-editor-form {
+        padding: 16px 16px 22px;
+      }
+
+      .entry-editor-grid,
+      .entry-editor-grid--two {
+        grid-template-columns: 1fr;
       }
 
       /* --- Calendar picker: fullscreen --- */
@@ -3035,31 +3007,6 @@
       flex-shrink: 0;
       line-height: 1.55;
       margin-top: 0;
-    }
-
-    .task-toggle-btn {
-      background: var(--surface) !important;
-      color: var(--text-dim) !important;
-      border: 1.5px solid var(--border) !important;
-      padding: 6px 10px !important;
-      border-radius: var(--radius-sm) !important;
-      cursor: pointer;
-      font-size: 0.78rem !important;
-      transition: all 0.15s ease;
-      line-height: 1;
-      white-space: nowrap;
-    }
-
-    .task-toggle-btn:hover {
-      border-color: var(--accent) !important;
-      background: var(--accent-soft) !important;
-      color: var(--accent) !important;
-    }
-
-    .task-toggle-btn.active {
-      background: var(--accent-bg) !important;
-      border-color: var(--accent) !important;
-      color: var(--accent) !important;
     }
 
     .recurring-badge {
@@ -4221,7 +4168,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=88"></script>
+<script src="app.js?v=89"></script>
 
 </body>
 </html>
