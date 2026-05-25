@@ -1708,6 +1708,7 @@
 
     document.addEventListener('wheel', (e) => {
       if (layoutState.mode !== 'tabs') return;
+      if (isMobileViewport()) return;
 
       const panelRect = calendarTodoPanel.getBoundingClientRect();
       const viewTabsEl = document.getElementById('viewTabs');
@@ -3075,8 +3076,12 @@
     searchBox.value = '';
     searchTerm = '';
     clearMobileSearch();
+    layoutState.mobileActiveView = 'calendar';
     if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
       layoutState.activeTab = 'calendar';
+      saveLayout();
+      applyLayout();
+    } else {
       saveLayout();
       applyLayout();
     }
@@ -4805,6 +4810,19 @@
   // ---- Layout mode (split / tabs) ----
   const SPLIT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="5.5" rx="1"/><rect x="1.5" y="9" width="13" height="5.5" rx="1"/></svg>';
   const TABS_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="5" width="13" height="9.5" rx="1"/><rect x="1.5" y="1.5" width="5" height="4.5" rx="1" fill="currentColor" stroke="none"/><rect x="8.5" y="1.5" width="5" height="4.5" rx="1"/></svg>';
+  const MOBILE_VIEWS = ['calendar', 'todo', 'widgets'];
+
+  function getMobileActiveView() {
+    return MOBILE_VIEWS.includes(layoutState.mobileActiveView)
+      ? layoutState.mobileActiveView
+      : 'calendar';
+  }
+
+  function updateMobileViewClass(activeView) {
+    MOBILE_VIEWS.forEach(view => {
+      document.body.classList.toggle(`mobile-view-${view}`, view === activeView && isMobileViewport());
+    });
+  }
 
   function applyLayout() {
     const viewTabs = document.getElementById('viewTabs');
@@ -4812,6 +4830,19 @@
     const plannerRoot = document.getElementById('plannerRoot');
     const calendarView = calendarTabLayout || plannerRoot;
     const toggleBtn = document.getElementById('viewToggleBtn');
+    const mobileBottomNav = document.getElementById('mobileBottomNav');
+    const isMobile = isMobileViewport();
+    const mobileActiveView = getMobileActiveView();
+
+    updateMobileViewClass(mobileActiveView);
+
+    if (mobileBottomNav) {
+      mobileBottomNav.querySelectorAll('[data-mobile-view]').forEach(btn => {
+        const isActive = btn.dataset.mobileView === mobileActiveView;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-current', isActive ? 'page' : 'false');
+      });
+    }
 
     if (layoutState.mode === 'tabs') {
       document.body.classList.add('layout-tabs');
@@ -4822,7 +4853,12 @@
         t.classList.toggle('active', t.dataset.view === layoutState.activeTab);
       });
 
-      if (layoutState.activeTab === 'notebook') {
+      if (isMobile) {
+        nbSection.classList.add('hidden');
+        calendarView.classList.remove('hidden');
+        plannerRoot.classList.toggle('hidden', mobileActiveView !== 'calendar');
+        notebookContent.classList.remove('notebook-collapsed');
+      } else if (layoutState.activeTab === 'notebook') {
         nbSection.classList.remove('hidden');
         calendarView.classList.add('hidden');
         plannerRoot.classList.add('hidden');
@@ -4924,6 +4960,47 @@
     }
   });
 
+  document.getElementById('mobileBottomNav')?.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-mobile-view]');
+    if (!tab) return;
+
+    const targetView = tab.dataset.mobileView;
+    if (!MOBILE_VIEWS.includes(targetView) || targetView === getMobileActiveView()) return;
+
+    disableBootScroll();
+
+    if (getMobileActiveView() === 'calendar') {
+      savedCalendarScrollY = window.scrollY;
+      try { sessionStorage.setItem(CAL_SCROLL_SS_KEY, String(savedCalendarScrollY)); } catch (_) {}
+    }
+
+    layoutState.mode = 'tabs';
+    layoutState.mobileActiveView = targetView;
+    saveLayout();
+    applyLayout();
+
+    if (targetView === 'calendar') {
+      let y = savedCalendarScrollY;
+      if (y == null) {
+        try {
+          const parsed = parseFloat(sessionStorage.getItem(CAL_SCROLL_SS_KEY));
+          if (!isNaN(parsed)) y = parsed;
+        } catch (_) {}
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (y != null && !isNaN(y)) {
+            window.scrollTo(0, clampWindowScrollY(y));
+          } else {
+            setTimeout(() => scrollCalendarToToday('auto'), 40);
+          }
+        });
+      });
+    } else {
+      requestAnimationFrame(() => window.scrollTo(0, 0));
+    }
+  });
+
   // ---- Month grid calendar picker ----
   const calPickerOverlay = document.getElementById('calPickerOverlay');
   const calPickerGrid = document.getElementById('calPickerGrid');
@@ -5017,9 +5094,13 @@
     searchBox.value = '';
     searchTerm = '';
     clearMobileSearch();
+    layoutState.mobileActiveView = 'calendar';
 
     if (layoutState.mode === 'tabs' && layoutState.activeTab !== 'calendar') {
       layoutState.activeTab = 'calendar';
+      saveLayout();
+      applyLayout();
+    } else {
       saveLayout();
       applyLayout();
     }
@@ -5099,10 +5180,21 @@
     return window.innerWidth <= 600;
   }
 
-  if (isMobileViewport() && layoutState.mode !== 'tabs') {
-    layoutState.mode = 'tabs';
-    if (!layoutState.activeTab) layoutState.activeTab = 'calendar';
-    saveLayout();
+  if (isMobileViewport()) {
+    let mobileLayoutChanged = false;
+    if (layoutState.mode !== 'tabs') {
+      layoutState.mode = 'tabs';
+      mobileLayoutChanged = true;
+    }
+    if (!layoutState.activeTab) {
+      layoutState.activeTab = 'calendar';
+      mobileLayoutChanged = true;
+    }
+    if (!MOBILE_VIEWS.includes(layoutState.mobileActiveView)) {
+      layoutState.mobileActiveView = 'calendar';
+      mobileLayoutChanged = true;
+    }
+    if (mobileLayoutChanged) saveLayout();
   }
 
   window.addEventListener('resize', (() => {
@@ -5110,13 +5202,20 @@
     return () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        if (isMobileViewport() && layoutState.mode !== 'tabs') {
+        const isMobile = isMobileViewport();
+        let mobileLayoutChanged = false;
+        if (isMobile && layoutState.mode !== 'tabs') {
           layoutState.mode = 'tabs';
-          saveLayout();
-          applyLayout();
-        } else {
-          updateStickyOffsets();
+          mobileLayoutChanged = true;
         }
+        if (isMobile && !MOBILE_VIEWS.includes(layoutState.mobileActiveView)) {
+          layoutState.mobileActiveView = 'calendar';
+          mobileLayoutChanged = true;
+        }
+        if (mobileLayoutChanged) {
+          saveLayout();
+        }
+        applyLayout();
       }, 200);
     };
   })());
