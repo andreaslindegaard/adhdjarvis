@@ -2089,6 +2089,100 @@
       display: none;
     }
 
+    @media (max-width: 960px) {
+      .view-toggle-btn {
+        display: none !important;
+      }
+
+      .view-tabs.visible {
+        display: none;
+      }
+
+      body.layout-tabs .calendar-tab-layout {
+        display: block;
+        max-width: 100%;
+        padding: 0 10px calc(104px + env(safe-area-inset-bottom));
+      }
+
+      body.layout-tabs .calendar-document {
+        display: block;
+        padding: 20px 0 0;
+      }
+
+      body.mobile-view-todo .calendar-document,
+      body.mobile-view-widgets .calendar-document {
+        display: none !important;
+      }
+
+      body.mobile-view-calendar .calendar-todo-panel {
+        display: none !important;
+      }
+
+      body.mobile-view-todo .calendar-todo-panel,
+      body.mobile-view-widgets .calendar-todo-panel {
+        display: flex !important;
+        position: static !important;
+        max-height: none !important;
+        overflow: visible;
+        margin: 16px 0 0;
+        padding: 0 0 calc(96px + env(safe-area-inset-bottom));
+      }
+
+      body.mobile-view-todo .calendar-widgets-panel {
+        display: none !important;
+      }
+
+      body.mobile-view-widgets .calendar-todo-card {
+        display: none !important;
+      }
+
+      .mobile-bottom-nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 130;
+        display: flex;
+        justify-content: space-around;
+        gap: 4px;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+        background: rgba(245, 240, 232, 0.94);
+        border-top: 1px solid var(--border-light);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+
+      .mobile-bottom-nav button {
+        flex: 1;
+        min-width: 0;
+        min-height: 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--text-dim);
+        font-family: inherit;
+        font-size: 0.72rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .mobile-bottom-nav button svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+      }
+
+      .mobile-bottom-nav button.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+    }
+
     /* Export modal */
     .modal-overlay {
       display: none;
@@ -3790,6 +3884,16 @@
       }
     }
 
+    @media (max-width: 960px) {
+      .view-toggle-btn {
+        display: none !important;
+      }
+
+      .view-tabs.visible {
+        display: none !important;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -4117,7 +4221,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=87"></script>
+<script src="app.js?v=88"></script>
 
 </body>
 </html>

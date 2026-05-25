@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 55;
+  const SW_SCRIPT_VERSION = 56;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -1708,7 +1708,7 @@
 
     document.addEventListener('wheel', (e) => {
       if (layoutState.mode !== 'tabs') return;
-      if (isMobileViewport()) return;
+      if (isNarrowLayoutViewport()) return;
 
       const panelRect = calendarTodoPanel.getBoundingClientRect();
       const viewTabsEl = document.getElementById('viewTabs');
@@ -3840,7 +3840,7 @@
     telegramChatId: '8493934471',
     leadTime: 15,
     phoneAlarmEnabled: true,
-    morningBriefing: true,
+    morningBriefing: false,
     morningTime: '06:30',
     timeZone: '',
     googleCalendarAutoSend: false
@@ -4818,9 +4818,13 @@
       : 'calendar';
   }
 
+  function isNarrowLayoutViewport() {
+    return window.innerWidth <= 960;
+  }
+
   function updateMobileViewClass(activeView) {
     MOBILE_VIEWS.forEach(view => {
-      document.body.classList.toggle(`mobile-view-${view}`, view === activeView && isMobileViewport());
+      document.body.classList.toggle(`mobile-view-${view}`, view === activeView && isNarrowLayoutViewport());
     });
   }
 
@@ -4831,7 +4835,7 @@
     const calendarView = calendarTabLayout || plannerRoot;
     const toggleBtn = document.getElementById('viewToggleBtn');
     const mobileBottomNav = document.getElementById('mobileBottomNav');
-    const isMobile = isMobileViewport();
+    const isMobile = isNarrowLayoutViewport();
     const mobileActiveView = getMobileActiveView();
 
     updateMobileViewClass(mobileActiveView);
@@ -5175,12 +5179,16 @@
     }
   });
 
-  // ---- Mobile: force tabs layout on small screens ----
+  // ---- Narrow layout: force tabs and bottom nav ----
   function isMobileViewport() {
     return window.innerWidth <= 600;
   }
 
-  if (isMobileViewport()) {
+  function shouldUseNarrowLayout() {
+    return isNarrowLayoutViewport();
+  }
+
+  if (shouldUseNarrowLayout()) {
     let mobileLayoutChanged = false;
     if (layoutState.mode !== 'tabs') {
       layoutState.mode = 'tabs';
@@ -5202,7 +5210,7 @@
     return () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        const isMobile = isMobileViewport();
+        const isMobile = shouldUseNarrowLayout();
         let mobileLayoutChanged = false;
         if (isMobile && layoutState.mode !== 'tabs') {
           layoutState.mode = 'tabs';
