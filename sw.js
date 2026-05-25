@@ -1,4 +1,4 @@
-const CACHE_NAME = 'adhd-jarvis-v57';
+const CACHE_NAME = 'adhd-jarvis-v58';
 
 // Install: skip waiting immediately to take over
 self.addEventListener('install', (event) => {
@@ -20,8 +20,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Network-only for Firebase/Google API calls
-  if (url.hostname.includes('googleapis.com') || url.hostname.includes('firebaseio.com')) {
+  // Network-only for external Google API calls
+  if (url.hostname.includes('googleapis.com')) {
     event.respondWith(fetch(event.request));
     return;
   }

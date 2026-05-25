@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 57;
+  const SW_SCRIPT_VERSION = 58;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
