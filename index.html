@@ -2082,11 +2082,13 @@
       }
 
       body.mobile-view-todo .calendar-document,
-      body.mobile-view-widgets .calendar-document {
+      body.mobile-view-widgets .calendar-document,
+      body.mobile-view-notebook .calendar-document {
         display: none !important;
       }
 
-      body.mobile-view-calendar .calendar-todo-panel {
+      body.mobile-view-calendar .calendar-todo-panel,
+      body.mobile-view-notebook .calendar-todo-panel {
         display: none !important;
       }
 
@@ -2106,6 +2108,10 @@
 
       body.mobile-view-widgets .calendar-todo-card {
         display: none !important;
+      }
+
+      body.mobile-view-notebook .notebook-section {
+        padding: 12px 10px calc(104px + env(safe-area-inset-bottom));
       }
 
       .mobile-bottom-nav {
@@ -3758,11 +3764,13 @@
       }
 
       body.mobile-view-todo .calendar-document,
-      body.mobile-view-widgets .calendar-document {
+      body.mobile-view-widgets .calendar-document,
+      body.mobile-view-notebook .calendar-document {
         display: none !important;
       }
 
-      body.mobile-view-calendar .calendar-todo-panel {
+      body.mobile-view-calendar .calendar-todo-panel,
+      body.mobile-view-notebook .calendar-todo-panel {
         display: none !important;
       }
 
@@ -3782,6 +3790,10 @@
 
       body.mobile-view-widgets .calendar-todo-card {
         display: none !important;
+      }
+
+      body.mobile-view-notebook .notebook-section {
+        padding: 12px 10px calc(104px + env(safe-area-inset-bottom));
       }
 
       .mobile-bottom-nav {
@@ -3951,6 +3963,10 @@
     <button type="button" data-mobile-view="widgets" aria-label="Widgets">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       <span>Widgets</span>
+    </button>
+    <button type="button" data-mobile-view="notebook" aria-label="Notes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h11a2 2 0 0 1 2 2v16H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M8 7h7M8 11h7M8 15h5"/><path d="M6 19h13"/></svg>
+      <span>Notes</span>
     </button>
   </nav>
 
@@ -4168,7 +4184,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=90"></script>
+<script src="app.js?v=91"></script>
 
 </body>
 </html>

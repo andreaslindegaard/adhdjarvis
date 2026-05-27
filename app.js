@@ -2759,8 +2759,16 @@
       }
 
       if (layoutState.mode === 'tabs') {
+        let layoutChanged = false;
+        if (isNarrowLayoutViewport()) {
+          layoutChanged = layoutState.mobileActiveView !== 'notebook';
+          layoutState.mobileActiveView = 'notebook';
+        }
         if (layoutState.activeTab !== 'notebook') {
           layoutState.activeTab = 'notebook';
+          layoutChanged = true;
+        }
+        if (layoutChanged) {
           saveLayout();
           applyLayout();
         }
@@ -4585,7 +4593,7 @@
   // ---- Layout mode (split / tabs) ----
   const SPLIT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="5.5" rx="1"/><rect x="1.5" y="9" width="13" height="5.5" rx="1"/></svg>';
   const TABS_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="5" width="13" height="9.5" rx="1"/><rect x="1.5" y="1.5" width="5" height="4.5" rx="1" fill="currentColor" stroke="none"/><rect x="8.5" y="1.5" width="5" height="4.5" rx="1"/></svg>';
-  const MOBILE_VIEWS = ['calendar', 'todo', 'widgets'];
+  const MOBILE_VIEWS = ['calendar', 'todo', 'widgets', 'notebook'];
 
   function getMobileActiveView() {
     return MOBILE_VIEWS.includes(layoutState.mobileActiveView)
@@ -4633,10 +4641,12 @@
       });
 
       if (isMobile) {
-        nbSection.classList.add('hidden');
-        calendarView.classList.remove('hidden');
+        const showNotebook = mobileActiveView === 'notebook';
+        nbSection.classList.toggle('hidden', !showNotebook);
+        calendarView.classList.toggle('hidden', showNotebook);
         plannerRoot.classList.toggle('hidden', mobileActiveView !== 'calendar');
         notebookContent.classList.remove('notebook-collapsed');
+        if (showNotebook) renderNotebook();
       } else if (layoutState.activeTab === 'notebook') {
         nbSection.classList.remove('hidden');
         calendarView.classList.add('hidden');
@@ -4748,13 +4758,19 @@
 
     disableBootScroll();
 
-    if (getMobileActiveView() === 'calendar') {
+    const previousView = getMobileActiveView();
+
+    if (previousView === 'calendar') {
       savedCalendarScrollY = window.scrollY;
       try { sessionStorage.setItem(CAL_SCROLL_SS_KEY, String(savedCalendarScrollY)); } catch (_) {}
+    } else if (previousView === 'notebook') {
+      savedNotebookScrollY = window.scrollY;
+      try { sessionStorage.setItem(NB_SCROLL_SS_KEY, String(savedNotebookScrollY)); } catch (_) {}
     }
 
     layoutState.mode = 'tabs';
     layoutState.mobileActiveView = targetView;
+    layoutState.activeTab = targetView === 'notebook' ? 'notebook' : 'calendar';
     saveLayout();
     applyLayout();
 
@@ -4775,6 +4791,23 @@
           }
         });
       });
+    } else if (targetView === 'notebook') {
+      let y = savedNotebookScrollY;
+      if (y == null) {
+        try {
+          const parsed = parseFloat(sessionStorage.getItem(NB_SCROLL_SS_KEY));
+          if (!isNaN(parsed)) y = parsed;
+        } catch (_) {}
+      }
+      if (y != null && !isNaN(y)) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo(0, clampWindowScrollY(y));
+          });
+        });
+      } else {
+        requestAnimationFrame(() => window.scrollTo(0, 0));
+      }
     } else {
       requestAnimationFrame(() => window.scrollTo(0, 0));
     }
