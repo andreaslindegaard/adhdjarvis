@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 61;
+  const SW_SCRIPT_VERSION = 62;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -3781,7 +3781,7 @@
     leadTime: 15,
     phoneAlarmEnabled: true,
     morningBriefing: true,
-    opus48LeaderboardWatch: true,
+    newsGoallyEnabled: true,
     morningTime: '06:30',
     timeZone: '',
     googleCalendarAutoSend: false
@@ -3792,7 +3792,11 @@
     if (typeof data.phoneAlarmEnabled !== 'boolean' && typeof data.alarmEnabled === 'boolean') {
       data.phoneAlarmEnabled = data.alarmEnabled;
     }
+    if (typeof data.newsGoallyEnabled !== 'boolean' && typeof data.opus48LeaderboardWatch === 'boolean') {
+      data.newsGoallyEnabled = data.opus48LeaderboardWatch;
+    }
     delete data.alarmEnabled;
+    delete data.opus48LeaderboardWatch;
     return data;
   }
 
@@ -4303,7 +4307,7 @@
     document.getElementById('telegramChatId').value = s.telegramChatId || '';
     document.getElementById('notifLeadTime').value = String(s.leadTime ?? 15);
     document.getElementById('morningBriefingToggle').checked = !!s.morningBriefing;
-    document.getElementById('opus48WatchToggle').checked = !!s.opus48LeaderboardWatch;
+    document.getElementById('newsGoallyToggle').checked = !!s.newsGoallyEnabled;
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
     document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
     document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
@@ -4438,7 +4442,7 @@
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
       phoneAlarmEnabled: document.getElementById('alarmNotifToggle').checked,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
-      opus48LeaderboardWatch: document.getElementById('opus48WatchToggle').checked,
+      newsGoallyEnabled: document.getElementById('newsGoallyToggle').checked,
       morningTime: document.getElementById('morningBriefingTime').value || '06:30',
       googleCalendarAutoSend: document.getElementById('googleCalendarAutoSendToggle').checked,
       timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)

@@ -7,6 +7,7 @@ type NotifSettings = {
   telegramEnabled?: boolean;
   telegramBotToken?: string;
   telegramChatId?: string;
+  newsGoallyEnabled?: boolean;
   opus48LeaderboardWatch?: boolean;
 };
 
@@ -22,8 +23,19 @@ type WatchSource = {
   scanUrls: string[];
 };
 
-type ScanResult = {
+type WatchTarget = {
   id: string;
+  title: string;
+  message: string;
+  sentKey: string;
+  legacySentKeys?: string[];
+  sources: WatchSource[];
+  patterns: { label: string; pattern: RegExp }[];
+};
+
+type SourceScanResult = {
+  targetId: string;
+  sourceId: string;
   label: string;
   pageUrl: string;
   found: boolean;
@@ -32,32 +44,52 @@ type ScanResult = {
   errors: string[];
 };
 
+type WatchHit = SourceScanResult & {
+  title: string;
+  message: string;
+};
+
+type TargetScanResult = {
+  targetId: string;
+  title: string;
+  found: boolean;
+  hits: WatchHit[];
+  sources: SourceScanResult[];
+};
+
 const DEFAULT_SUPABASE_URL = "https://wavyqvbsaoahbulkunbq.supabase.co";
 const DEFAULT_SUPABASE_KEY = "sb_publishable_qs8Q-O3K-7Bn538WRHwEqA_dAHDuYZs";
-const SENT_KEY = "opus48LeaderboardWatchSent";
 
-const SOURCES: WatchSource[] = [
+const WATCH_TARGETS: WatchTarget[] = [
   {
-    id: "arc-prize",
-    label: "ARC Prize leaderboard",
-    pageUrl: "https://arcprize.org/leaderboard",
-    scanUrls: [
-      "https://arcprize.org/scripts/leaderboard/data.js",
-      "https://arcprize.org/leaderboard",
+    id: "opus-48-leaderboards",
+    title: "Claude Opus 4.8",
+    message: "Claude Opus 4.8 ser ud til at være landet på leaderboardet.",
+    sentKey: "newsGoallySent:opus-48-leaderboards",
+    legacySentKeys: ["opus48LeaderboardWatchSent"],
+    sources: [
+      {
+        id: "arc-prize",
+        label: "ARC Prize leaderboard",
+        pageUrl: "https://arcprize.org/leaderboard",
+        scanUrls: [
+          "https://arcprize.org/scripts/leaderboard/data.js",
+          "https://arcprize.org/leaderboard",
+        ],
+      },
+      {
+        id: "deepswe",
+        label: "DeepSWE leaderboard",
+        pageUrl: "https://deepswe.datacurve.ai/blog#leaderboard",
+        scanUrls: ["https://deepswe.datacurve.ai/blog"],
+      },
+    ],
+    patterns: [
+      { label: "claude-opus-4.8", pattern: /\bclaude-opus-4-8(?:-[a-z0-9]+)?\b/ },
+      { label: "opus-4.8", pattern: /\b(?:anthropic-)?opus-4-8(?:-[a-z0-9]+)?\b/ },
+      { label: "claude-4.8", pattern: /\bclaude-4-8(?:-[a-z0-9]+)?\b/ },
     ],
   },
-  {
-    id: "deepswe",
-    label: "DeepSWE leaderboard",
-    pageUrl: "https://deepswe.datacurve.ai/blog#leaderboard",
-    scanUrls: ["https://deepswe.datacurve.ai/blog"],
-  },
-];
-
-const MODEL_PATTERNS = [
-  { label: "claude-opus-4.8", pattern: /\bclaude-opus-4-8(?:-[a-z0-9]+)?\b/ },
-  { label: "opus-4.8", pattern: /\b(?:anthropic-)?opus-4-8(?:-[a-z0-9]+)?\b/ },
-  { label: "claude-4.8", pattern: /\bclaude-4-8(?:-[a-z0-9]+)?\b/ },
 ];
 
 function readEnv(name: string): string {
@@ -115,7 +147,15 @@ async function fetchPlannerRows(config: SupabaseConfig, keys: string[]): Promise
   return new Map(rows.map((row) => [row.key, row.payload]));
 }
 
-async function claimSent(config: SupabaseConfig, hits: ScanResult[]): Promise<boolean> {
+function getSentKeys(target: WatchTarget): string[] {
+  return [target.sentKey, ...(target.legacySentKeys || [])];
+}
+
+function isTargetAlreadySent(rows: Map<string, unknown>, target: WatchTarget): boolean {
+  return getSentKeys(target).some((key) => rows.has(key));
+}
+
+async function claimSent(config: SupabaseConfig, target: WatchTarget, hits: WatchHit[]): Promise<boolean> {
   const now = new Date().toISOString();
   const url = new URL("/rest/v1/planner_data", config.url);
   const res = await fetch(url, {
@@ -126,14 +166,15 @@ async function claimSent(config: SupabaseConfig, hits: ScanResult[]): Promise<bo
       Prefer: "return=minimal",
     },
     body: JSON.stringify({
-      key: SENT_KEY,
+      key: target.sentKey,
       payload: {
-        type: "opus48LeaderboardWatch",
-        model: "Claude Opus 4.8",
+        type: "newsGoally",
+        targetId: target.id,
+        title: target.title,
         source: "netlify",
         claimedAt: now,
         hits: hits.map((hit) => ({
-          id: hit.id,
+          sourceId: hit.sourceId,
           label: hit.label,
           pageUrl: hit.pageUrl,
           matched: hit.matched || "",
@@ -166,7 +207,7 @@ function decodeCommonEntities(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
-function normalizeForModelSearch(value: string): string {
+function normalizeForSearch(value: string): string {
   return decodeCommonEntities(value)
     .toLowerCase()
     .replace(/['"`]/g, "")
@@ -174,9 +215,9 @@ function normalizeForModelSearch(value: string): string {
     .replace(/-+/g, "-");
 }
 
-function findOpus48Mention(value: string): string | null {
-  const normalized = normalizeForModelSearch(value);
-  for (const { label, pattern } of MODEL_PATTERNS) {
+function findTargetMention(target: WatchTarget, value: string): string | null {
+  const normalized = normalizeForSearch(value);
+  for (const { label, pattern } of target.patterns) {
     if (pattern.test(normalized)) return label;
   }
   return null;
@@ -190,7 +231,7 @@ async function fetchText(url: string, timeoutMs = 12000): Promise<string> {
       signal: controller.signal,
       headers: {
         Accept: "text/html,application/javascript,text/plain;q=0.9,*/*;q=0.8",
-        "User-Agent": "ADHD-Jarvis-Opus-4.8-Watch/1.0 (+https://adhdjarvis.netlify.app)",
+        "User-Agent": "ADHD-Jarvis-News-Goally/1.0 (+https://adhdjarvis.netlify.app)",
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -200,16 +241,17 @@ async function fetchText(url: string, timeoutMs = 12000): Promise<string> {
   }
 }
 
-async function scanSource(source: WatchSource): Promise<ScanResult> {
+async function scanSource(target: WatchTarget, source: WatchSource): Promise<SourceScanResult> {
   const errors: string[] = [];
 
   for (const scanUrl of source.scanUrls) {
     try {
       const text = await fetchText(scanUrl);
-      const matched = findOpus48Mention(text);
+      const matched = findTargetMention(target, text);
       if (matched) {
         return {
-          id: source.id,
+          targetId: target.id,
+          sourceId: source.id,
           label: source.label,
           pageUrl: source.pageUrl,
           found: true,
@@ -225,11 +267,31 @@ async function scanSource(source: WatchSource): Promise<ScanResult> {
   }
 
   return {
-    id: source.id,
+    targetId: target.id,
+    sourceId: source.id,
     label: source.label,
     pageUrl: source.pageUrl,
     found: false,
     errors,
+  };
+}
+
+async function scanTarget(target: WatchTarget): Promise<TargetScanResult> {
+  const sources = await Promise.all(target.sources.map((source) => scanSource(target, source)));
+  const hits = sources
+    .filter((source) => source.found)
+    .map((source) => ({
+      ...source,
+      title: target.title,
+      message: target.message,
+    }));
+
+  return {
+    targetId: target.id,
+    title: target.title,
+    found: hits.length > 0,
+    hits,
+    sources,
   };
 }
 
@@ -241,20 +303,20 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-async function sendTelegramMessage(token: string, chatId: string, hits: ScanResult[]): Promise<boolean> {
-  const sourceLines = hits
-    .map((hit) => {
-      const matched = hit.matched ? ` (${escapeHtml(hit.matched)})` : "";
-      return `- <a href="${escapeHtml(hit.pageUrl)}">${escapeHtml(hit.label)}</a>${matched}`;
+async function sendTelegramMessage(token: string, chatId: string, hitGroups: TargetScanResult[]): Promise<boolean> {
+  const sections = hitGroups
+    .map((group) => {
+      const lines = group.hits
+        .map((hit) => {
+          const matched = hit.matched ? ` (${escapeHtml(hit.matched)})` : "";
+          return `- <a href="${escapeHtml(hit.pageUrl)}">${escapeHtml(hit.label)}</a>${matched}`;
+        })
+        .join("\n");
+      return [`<b>${escapeHtml(group.title)}</b>`, escapeHtml(group.hits[0]?.message || ""), lines].join("\n");
     })
-    .join("\n");
+    .join("\n\n");
 
-  const text = [
-    "<b>Opus 4.8 watch</b>",
-    "Claude Opus 4.8 ser ud til at være landet på leaderboardet.",
-    "",
-    sourceLines,
-  ].join("\n");
+  const text = ["<b>News Goally</b>", sections].join("\n\n");
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
@@ -271,12 +333,19 @@ async function sendTelegramMessage(token: string, chatId: string, hits: ScanResu
   return !!data?.ok;
 }
 
+function isNewsGoallyEnabled(settings: NotifSettings): boolean {
+  if (typeof settings.newsGoallyEnabled === "boolean") return settings.newsGoallyEnabled;
+  if (typeof settings.opus48LeaderboardWatch === "boolean") return settings.opus48LeaderboardWatch;
+  return true;
+}
+
 export default async function handler(): Promise<Response> {
   const supabase = getSupabaseConfig();
+  const sentKeys = WATCH_TARGETS.flatMap(getSentKeys);
 
   let rows: Map<string, unknown>;
   try {
-    rows = await fetchPlannerRows(supabase, ["notifSettings", SENT_KEY]);
+    rows = await fetchPlannerRows(supabase, ["notifSettings", ...sentKeys]);
   } catch (err) {
     return jsonResponse(
       { ok: false, error: err instanceof Error ? err.message : "settings_read_failed" },
@@ -284,13 +353,9 @@ export default async function handler(): Promise<Response> {
     );
   }
 
-  if (rows.has(SENT_KEY)) {
-    return jsonResponse({ ok: true, skipped: "already_sent" });
-  }
-
   const settings = (rows.get("notifSettings") || {}) as NotifSettings;
-  if (settings.opus48LeaderboardWatch === false) {
-    return jsonResponse({ ok: true, skipped: "watch_disabled" });
+  if (!isNewsGoallyEnabled(settings)) {
+    return jsonResponse({ ok: true, skipped: "news_goally_disabled" });
   }
   if (settings.telegramEnabled === false) {
     return jsonResponse({ ok: true, skipped: "telegram_disabled" });
@@ -302,41 +367,52 @@ export default async function handler(): Promise<Response> {
     return jsonResponse({ ok: false, error: "missing_telegram_credentials" }, 400);
   }
 
-  const results = await Promise.all(SOURCES.map(scanSource));
-  const hits = results.filter((result) => result.found);
-  if (hits.length === 0) {
+  const activeTargets = WATCH_TARGETS.filter((target) => !isTargetAlreadySent(rows, target));
+  if (activeTargets.length === 0) {
+    return jsonResponse({ ok: true, skipped: "all_targets_already_sent" });
+  }
+
+  const results = await Promise.all(activeTargets.map(scanTarget));
+  const foundGroups = results.filter((result) => result.found);
+  if (foundGroups.length === 0) {
     return jsonResponse({
       ok: true,
       found: false,
       checkedAt: new Date().toISOString(),
-      sources: results,
+      targets: results,
     });
   }
 
-  let claimed = false;
-  try {
-    claimed = await claimSent(supabase, hits);
-  } catch (err) {
-    return jsonResponse(
-      { ok: false, error: err instanceof Error ? err.message : "claim_failed", hits },
-      500,
-    );
+  const claimedGroups: TargetScanResult[] = [];
+  for (const group of foundGroups) {
+    const target = WATCH_TARGETS.find((candidate) => candidate.id === group.targetId);
+    if (!target) continue;
+
+    try {
+      const claimed = await claimSent(supabase, target, group.hits);
+      if (claimed) claimedGroups.push(group);
+    } catch (err) {
+      return jsonResponse(
+        { ok: false, error: err instanceof Error ? err.message : "claim_failed", targetId: group.targetId },
+        500,
+      );
+    }
   }
 
-  if (!claimed) {
-    return jsonResponse({ ok: true, skipped: "already_claimed", found: true, hits });
+  if (claimedGroups.length === 0) {
+    return jsonResponse({ ok: true, skipped: "already_claimed", found: true, targets: foundGroups });
   }
 
-  const telegramOk = await sendTelegramMessage(telegramToken, telegramChatId, hits);
+  const telegramOk = await sendTelegramMessage(telegramToken, telegramChatId, claimedGroups);
   if (!telegramOk) {
-    return jsonResponse({ ok: false, error: "telegram_send_failed", hits }, 502);
+    return jsonResponse({ ok: false, error: "telegram_send_failed", targets: claimedGroups }, 502);
   }
 
   return jsonResponse({
     ok: true,
     sent: true,
     checkedAt: new Date().toISOString(),
-    hits,
+    targets: claimedGroups,
   });
 }
 
