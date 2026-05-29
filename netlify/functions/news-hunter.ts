@@ -7,6 +7,9 @@ type NotifSettings = {
   telegramEnabled?: boolean;
   telegramBotToken?: string;
   telegramChatId?: string;
+  newsHunterEnabled?: boolean;
+  newsHunterItemsText?: string;
+  newsHunterItems?: unknown[];
   newsGoallyEnabled?: boolean;
   opus48LeaderboardWatch?: boolean;
 };
@@ -29,6 +32,7 @@ type WatchTarget = {
   message: string;
   sentKey: string;
   legacySentKeys?: string[];
+  requestPatterns: RegExp[];
   sources: WatchSource[];
   patterns: { label: string; pattern: RegExp }[];
 };
@@ -59,14 +63,22 @@ type TargetScanResult = {
 
 const DEFAULT_SUPABASE_URL = "https://wavyqvbsaoahbulkunbq.supabase.co";
 const DEFAULT_SUPABASE_KEY = "sb_publishable_qs8Q-O3K-7Bn538WRHwEqA_dAHDuYZs";
+const DEFAULT_NEWS_HUNTER_ITEMS = [
+  "Claude Opus 4.8 on ARC Prize leaderboard and DeepSWE leaderboard",
+];
 
 const WATCH_TARGETS: WatchTarget[] = [
   {
     id: "opus-48-leaderboards",
     title: "Claude Opus 4.8",
     message: "Claude Opus 4.8 ser ud til at være landet på leaderboardet.",
-    sentKey: "newsGoallySent:opus-48-leaderboards",
-    legacySentKeys: ["opus48LeaderboardWatchSent"],
+    sentKey: "newsHunterSent:opus-48-leaderboards",
+    legacySentKeys: ["newsGoallySent:opus-48-leaderboards", "opus48LeaderboardWatchSent"],
+    requestPatterns: [
+      /\bclaude-opus-4-8\b/,
+      /\bopus-4-8\b/,
+      /\bclaude-4-8\b/,
+    ],
     sources: [
       {
         id: "arc-prize",
@@ -168,7 +180,7 @@ async function claimSent(config: SupabaseConfig, target: WatchTarget, hits: Watc
     body: JSON.stringify({
       key: target.sentKey,
       payload: {
-        type: "newsGoally",
+        type: "newsHunter",
         targetId: target.id,
         title: target.title,
         source: "netlify",
@@ -231,7 +243,7 @@ async function fetchText(url: string, timeoutMs = 12000): Promise<string> {
       signal: controller.signal,
       headers: {
         Accept: "text/html,application/javascript,text/plain;q=0.9,*/*;q=0.8",
-        "User-Agent": "ADHD-Jarvis-News-Goally/1.0 (+https://adhdjarvis.netlify.app)",
+        "User-Agent": "ADHD-Jarvis-News-Hunter/1.0 (+https://adhdjarvis.netlify.app)",
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -316,7 +328,7 @@ async function sendTelegramMessage(token: string, chatId: string, hitGroups: Tar
     })
     .join("\n\n");
 
-  const text = ["<b>News Goally</b>", sections].join("\n\n");
+  const text = ["<b>News Hunter</b>", sections].join("\n\n");
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
@@ -333,10 +345,35 @@ async function sendTelegramMessage(token: string, chatId: string, hitGroups: Tar
   return !!data?.ok;
 }
 
-function isNewsGoallyEnabled(settings: NotifSettings): boolean {
+function parseNewsHunterItems(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getNewsHunterItems(settings: NotifSettings): string[] {
+  if (typeof settings.newsHunterItemsText === "string") {
+    return parseNewsHunterItems(settings.newsHunterItemsText);
+  }
+  if (Array.isArray(settings.newsHunterItems)) {
+    return settings.newsHunterItems.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return [...DEFAULT_NEWS_HUNTER_ITEMS];
+}
+
+function isNewsHunterEnabled(settings: NotifSettings): boolean {
+  if (typeof settings.newsHunterEnabled === "boolean") return settings.newsHunterEnabled;
   if (typeof settings.newsGoallyEnabled === "boolean") return settings.newsGoallyEnabled;
   if (typeof settings.opus48LeaderboardWatch === "boolean") return settings.opus48LeaderboardWatch;
   return true;
+}
+
+function isTargetRequested(target: WatchTarget, items: string[]): boolean {
+  return items.some((item) => {
+    const normalized = normalizeForSearch(item);
+    return target.requestPatterns.some((pattern) => pattern.test(normalized));
+  });
 }
 
 export default async function handler(): Promise<Response> {
@@ -354,8 +391,8 @@ export default async function handler(): Promise<Response> {
   }
 
   const settings = (rows.get("notifSettings") || {}) as NotifSettings;
-  if (!isNewsGoallyEnabled(settings)) {
-    return jsonResponse({ ok: true, skipped: "news_goally_disabled" });
+  if (!isNewsHunterEnabled(settings)) {
+    return jsonResponse({ ok: true, skipped: "news_hunter_disabled" });
   }
   if (settings.telegramEnabled === false) {
     return jsonResponse({ ok: true, skipped: "telegram_disabled" });
@@ -367,9 +404,16 @@ export default async function handler(): Promise<Response> {
     return jsonResponse({ ok: false, error: "missing_telegram_credentials" }, 400);
   }
 
-  const activeTargets = WATCH_TARGETS.filter((target) => !isTargetAlreadySent(rows, target));
+  const newsHunterItems = getNewsHunterItems(settings);
+  if (newsHunterItems.length === 0) {
+    return jsonResponse({ ok: true, skipped: "no_news_hunter_items" });
+  }
+
+  const activeTargets = WATCH_TARGETS.filter((target) =>
+    !isTargetAlreadySent(rows, target) && isTargetRequested(target, newsHunterItems)
+  );
   if (activeTargets.length === 0) {
-    return jsonResponse({ ok: true, skipped: "all_targets_already_sent" });
+    return jsonResponse({ ok: true, skipped: "no_active_supported_targets" });
   }
 
   const results = await Promise.all(activeTargets.map(scanTarget));

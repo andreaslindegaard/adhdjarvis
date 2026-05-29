@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 62;
+  const SW_SCRIPT_VERSION = 63;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -3766,6 +3766,9 @@
   const NOTIF_KEY = 'endless-planner-notif-settings';
   const NOTIF_SENT_KEY = 'endless-planner-notif-sent';
   const MORNING_BRIEF_SENT_LS = 'endless-planner-morning-brief-sent-date';
+  const DEFAULT_NEWS_HUNTER_ITEMS = [
+    'Claude Opus 4.8 on ARC Prize leaderboard and DeepSWE leaderboard'
+  ];
   let morningBriefSentDate = null;
   try {
     morningBriefSentDate = localStorage.getItem(MORNING_BRIEF_SENT_LS);
@@ -3781,7 +3784,9 @@
     leadTime: 15,
     phoneAlarmEnabled: true,
     morningBriefing: true,
-    newsGoallyEnabled: true,
+    newsHunterEnabled: true,
+    newsHunterItemsText: DEFAULT_NEWS_HUNTER_ITEMS.join('\n'),
+    newsHunterItems: [...DEFAULT_NEWS_HUNTER_ITEMS],
     morningTime: '06:30',
     timeZone: '',
     googleCalendarAutoSend: false
@@ -3792,12 +3797,35 @@
     if (typeof data.phoneAlarmEnabled !== 'boolean' && typeof data.alarmEnabled === 'boolean') {
       data.phoneAlarmEnabled = data.alarmEnabled;
     }
-    if (typeof data.newsGoallyEnabled !== 'boolean' && typeof data.opus48LeaderboardWatch === 'boolean') {
-      data.newsGoallyEnabled = data.opus48LeaderboardWatch;
+    if (typeof data.newsHunterEnabled !== 'boolean') {
+      if (typeof data.newsGoallyEnabled === 'boolean') data.newsHunterEnabled = data.newsGoallyEnabled;
+      else if (typeof data.opus48LeaderboardWatch === 'boolean') data.newsHunterEnabled = data.opus48LeaderboardWatch;
+    }
+    if (typeof data.newsHunterItemsText !== 'string' && Array.isArray(data.newsHunterItems)) {
+      data.newsHunterItemsText = data.newsHunterItems.map(item => String(item || '').trim()).filter(Boolean).join('\n');
+    }
+    if (typeof data.newsHunterItemsText === 'string') {
+      data.newsHunterItems = parseNewsHunterItems(data.newsHunterItemsText);
+    } else if (Array.isArray(data.newsHunterItems)) {
+      data.newsHunterItems = data.newsHunterItems.map(item => String(item || '').trim()).filter(Boolean);
     }
     delete data.alarmEnabled;
+    delete data.newsGoallyEnabled;
     delete data.opus48LeaderboardWatch;
     return data;
+  }
+
+  function parseNewsHunterItems(text) {
+    return String(text || '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  function autoResizeSettingsTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }
 
   function loadNotifSettings() {
@@ -4307,7 +4335,14 @@
     document.getElementById('telegramChatId').value = s.telegramChatId || '';
     document.getElementById('notifLeadTime').value = String(s.leadTime ?? 15);
     document.getElementById('morningBriefingToggle').checked = !!s.morningBriefing;
-    document.getElementById('newsGoallyToggle').checked = !!s.newsGoallyEnabled;
+    document.getElementById('newsHunterToggle').checked = !!s.newsHunterEnabled;
+    const newsHunterTextarea = document.getElementById('newsHunterItemsTextarea');
+    if (newsHunterTextarea) {
+      newsHunterTextarea.value = typeof s.newsHunterItemsText === 'string'
+        ? s.newsHunterItemsText
+        : (Array.isArray(s.newsHunterItems) ? s.newsHunterItems.join('\n') : '');
+      autoResizeSettingsTextarea(newsHunterTextarea);
+    }
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
     document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
     document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
@@ -4374,6 +4409,10 @@
     }
   });
 
+  document.getElementById('newsHunterItemsTextarea').addEventListener('input', (e) => {
+    autoResizeSettingsTextarea(e.target);
+  });
+
   document.getElementById('telegramTestBtn').addEventListener('click', async () => {
     const token = document.getElementById('telegramBotToken').value.trim();
     const chatId = document.getElementById('telegramChatId').value.trim();
@@ -4434,6 +4473,7 @@
   });
 
   document.getElementById('notifModalSave').addEventListener('click', () => {
+    const newsHunterItemsText = document.getElementById('newsHunterItemsTextarea').value.replace(/\r\n/g, '\n').trim();
     const s = {
       browserEnabled: document.getElementById('browserNotifToggle').checked,
       telegramEnabled: document.getElementById('telegramNotifToggle').checked,
@@ -4442,7 +4482,9 @@
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
       phoneAlarmEnabled: document.getElementById('alarmNotifToggle').checked,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
-      newsGoallyEnabled: document.getElementById('newsGoallyToggle').checked,
+      newsHunterEnabled: document.getElementById('newsHunterToggle').checked,
+      newsHunterItemsText,
+      newsHunterItems: parseNewsHunterItems(newsHunterItemsText),
       morningTime: document.getElementById('morningBriefingTime').value || '06:30',
       googleCalendarAutoSend: document.getElementById('googleCalendarAutoSendToggle').checked,
       timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)

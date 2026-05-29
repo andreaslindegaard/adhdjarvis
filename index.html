@@ -2498,6 +2498,12 @@
       resize: vertical;
     }
 
+    .settings-textarea--auto {
+      min-height: 96px;
+      overflow: hidden;
+      resize: none;
+    }
+
     .settings-textarea:focus {
       outline: none;
       border-color: var(--accent);
@@ -4023,10 +4029,14 @@
 
             <div class="settings-card">
               <label class="settings-toggle">
-                <input type="checkbox" id="newsGoallyToggle">
-                <span>News Goally</span>
+                <input type="checkbox" id="newsHunterToggle">
+                <span>News Hunter</span>
               </label>
-              <p class="settings-note">Telegram only; watches saved news goals and sends each one once.</p>
+              <label class="settings-field-label" for="newsHunterItemsTextarea">
+                Things to hunt for
+                <textarea class="settings-textarea settings-textarea--auto" id="newsHunterItemsTextarea" rows="3" placeholder="One news hunt per line"></textarea>
+              </label>
+              <p class="settings-note">Telegram only. Jarvis stays quiet until a saved hunt is confirmed.</p>
             </div>
 
             <div class="settings-card">
@@ -4204,7 +4214,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-sync.js?v=5"></script>
-<script src="app.js?v=95"></script>
+<script src="app.js?v=96"></script>
 
 </body>
 </html>
