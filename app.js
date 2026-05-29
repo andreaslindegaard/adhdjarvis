@@ -32,7 +32,7 @@
   };
 
   // Deploy: bump SW_SCRIPT_VERSION with CACHE_NAME in sw.js; bump ?v= on app.js / supabase-sync.js in index.html when those files change.
-  const SW_SCRIPT_VERSION = 58;
+  const SW_SCRIPT_VERSION = 60;
 
   let syncReady = false;
   let syncListeners = []; // to unsubscribe on sign-out
@@ -171,7 +171,7 @@
     return text;
   }
 
-  // notes structure: { "2026-03-29": [ { id, text, done, time } ] }
+  // notes structure: { "2026-03-29": [ { id, text, done, time, endDate } ] }
   let notes = loadNotes();
 
   let standaloneTodos = loadStandaloneTodos();
@@ -181,7 +181,7 @@
   let pushupCountdownTimer = null;
   let pushupLocalWriteAt = 0;
 
-  // recurring structure: [ { id, text, time, startDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
+  // recurring structure: [ { id, text, time, startDate, endDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
 
   // ---- Date helpers ----
@@ -195,6 +195,10 @@
   function parseDate(key) {
     const [y,m,d] = key.split('-').map(Number);
     return new Date(y, m-1, d);
+  }
+
+  function isDateKey(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
   function isToday(key) {
@@ -485,12 +489,97 @@
     return holidays[key] || null;
   }
 
+  function normalizeEntryEndDate(entry, startDate) {
+    const endDate = entry?.endDate;
+    return isDateKey(endDate) && endDate >= startDate ? endDate : startDate;
+  }
+
+  function getDateKeyDiff(startDate, endDate) {
+    const start = parseDate(startDate);
+    const end = parseDate(endDate);
+    return Math.max(0, Math.round((end - start) / 86400000));
+  }
+
+  function formatShortDateLabel(key, includeYear = false) {
+    const d = parseDate(key);
+    const year = includeYear ? `, ${d.getFullYear()}` : '';
+    return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}${year}`;
+  }
+
+  function formatEntryDateRange(startDate, endDate) {
+    const safeEndDate = normalizeEntryEndDate({ endDate }, startDate);
+    if (safeEndDate <= startDate) return '';
+
+    const start = parseDate(startDate);
+    const end = parseDate(safeEndDate);
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      return `${MONTHS[start.getMonth()].slice(0, 3)} ${start.getDate()}-${end.getDate()}`;
+    }
+    if (start.getFullYear() === end.getFullYear()) {
+      return `${MONTHS[start.getMonth()].slice(0, 3)} ${start.getDate()}-${MONTHS[end.getMonth()].slice(0, 3)} ${end.getDate()}`;
+    }
+    return `${formatShortDateLabel(startDate, true)}-${formatShortDateLabel(safeEndDate, true)}`;
+  }
+
+  function formatEntryTimeText(entry, startDate) {
+    const endDate = normalizeEntryEndDate(entry, startDate);
+    const dateRange = formatEntryDateRange(startDate, endDate);
+    const timeRange = entry.time ? `${entry.time}${entry.endTime ? '-' + entry.endTime : ''}` : '';
+    return [dateRange, timeRange].filter(Boolean).join(' ');
+  }
+
+  function getSpanPosition(startDate, endDate, forDate) {
+    if (endDate <= startDate) return '';
+    if (forDate === startDate) return 'start';
+    if (forDate === endDate) return 'end';
+    return 'middle';
+  }
+
+  function decorateEntryForDate(entry, startDate, forDate) {
+    const endDate = normalizeEntryEndDate(entry, startDate);
+    return {
+      ...entry,
+      startDate,
+      endDate,
+      occurrenceDate: forDate,
+      isMultiDay: endDate > startDate,
+      spanPosition: getSpanPosition(startDate, endDate, forDate)
+    };
+  }
+
+  function getRegularNotesForDate(forDate) {
+    const dayEntries = Array.isArray(notes[forDate]) ? notes[forDate] : [];
+    const entries = dayEntries.map(note => decorateEntryForDate(note, forDate, forDate));
+
+    for (const [startDate, dayNotes] of Object.entries(notes)) {
+      if (startDate === forDate || !isDateKey(startDate) || !Array.isArray(dayNotes)) continue;
+      for (const note of dayNotes) {
+        if (!note || note.smartList) continue;
+        const endDate = normalizeEntryEndDate(note, startDate);
+        if (endDate > startDate && forDate > startDate && forDate <= endDate) {
+          entries.push(decorateEntryForDate(note, startDate, forDate));
+        }
+      }
+    }
+
+    return entries;
+  }
+
   function getDateRange() {
     const today = new Date();
     let start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     let end = new Date(today.getFullYear() + 2, today.getMonth() + 1, 0);
 
-    const noteKeys = Object.keys(notes).filter(k => notes[k] && notes[k].length > 0).sort();
+    const noteKeys = [];
+    for (const [key, dayNotes] of Object.entries(notes)) {
+      if (!isDateKey(key)) continue;
+      if (!Array.isArray(dayNotes) || dayNotes.length === 0) continue;
+      noteKeys.push(key);
+      for (const note of dayNotes) {
+        noteKeys.push(normalizeEntryEndDate(note, key));
+      }
+    }
+    noteKeys.sort();
     if (noteKeys.length > 0) {
       const earliest = parseDate(noteKeys[0]);
       const latest = parseDate(noteKeys[noteKeys.length - 1]);
@@ -590,9 +679,11 @@
     if (recurringId) {
       const rec = recurring.find(r => r.id === recurringId);
       if (!rec) return null;
+      const startDate = rec.startDate || date;
       return {
         id: rec.id,
-        date: rec.startDate || date,
+        date: startDate,
+        endDate: normalizeEntryEndDate(rec, startDate),
         occurrenceDate: date,
         text: rec.text,
         time: rec.time || null,
@@ -609,6 +700,7 @@
     return {
       id: note.id,
       date,
+      endDate: normalizeEntryEndDate(note, date),
       text: note.text,
       time: note.time || null,
       endTime: note.endTime || null,
@@ -622,6 +714,8 @@
   function buildGoogleCalendarUrl(event) {
     const params = new URLSearchParams();
     const title = plainCalendarText(event.text);
+    const startDate = event.date;
+    const endDate = normalizeEntryEndDate(event, startDate);
     params.set('action', 'TEMPLATE');
     params.set('text', title);
     params.set('details', event.description ? plainCalendarText(event.description) : 'Created from ADHD Jarvis');
@@ -629,11 +723,13 @@
     if (event.location) params.set('location', plainCalendarText(event.location));
 
     if (event.time && event.allDay !== true) {
-      const start = makeCalendarDate(event.date, event.time);
-      const end = event.endTime ? makeCalendarDate(event.date, event.endTime) : addMinutes(start, 60);
+      const start = makeCalendarDate(startDate, event.time);
+      const end = event.endTime
+        ? makeCalendarDate(endDate, event.endTime)
+        : (endDate > startDate ? makeCalendarDate(endDate, event.time) : addMinutes(start, 60));
       params.set('dates', `${formatCompactDateTime(start)}/${formatCompactDateTime(end)}`);
     } else {
-      params.set('dates', `${formatCompactDate(event.date)}/${formatCompactDate(addDaysToDateKey(event.date, 1))}`);
+      params.set('dates', `${formatCompactDate(startDate)}/${formatCompactDate(addDaysToDateKey(endDate, 1))}`);
     }
 
     const rrule = buildCalendarRRule(event);
@@ -679,6 +775,7 @@
         .forEach(note => events.push({
           id: note.id,
           date,
+          endDate: normalizeEntryEndDate(note, date),
           text: note.text,
           time: note.time || null,
           endTime: note.endTime || null,
@@ -690,22 +787,28 @@
     }
     recurring
       .filter(rec => rec && rec.isEvent === true)
-      .forEach(rec => events.push({
-        id: rec.id,
-        date: rec.startDate,
-        text: rec.text,
-        time: rec.time || null,
-        endTime: rec.endTime || null,
-        allDay: rec.allDay ?? !rec.time,
-        leadTime: rec.leadTime ?? null,
-        location: rec.location || '',
-        description: rec.description || '',
-        recurring: rec
-      }));
+      .forEach(rec => {
+        const startDate = rec.startDate;
+        events.push({
+          id: rec.id,
+          date: startDate,
+          endDate: normalizeEntryEndDate(rec, startDate),
+          text: rec.text,
+          time: rec.time || null,
+          endTime: rec.endTime || null,
+          allDay: rec.allDay ?? !rec.time,
+          leadTime: rec.leadTime ?? null,
+          location: rec.location || '',
+          description: rec.description || '',
+          recurring: rec
+        });
+      });
     return events.sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
   }
 
   function buildIcsEvent(event, nowStamp, tz) {
+    const startDate = event.date;
+    const endDate = normalizeEntryEndDate(event, startDate);
     const description = event.description
       ? `Created from ADHD Jarvis\n\n${event.description}`
       : 'Created from ADHD Jarvis';
@@ -719,13 +822,15 @@
     if (event.location) lines.push(`LOCATION:${escapeIcsText(event.location)}`);
 
     if (event.time && event.allDay !== true) {
-      const start = makeCalendarDate(event.date, event.time);
-      const end = event.endTime ? makeCalendarDate(event.date, event.endTime) : addMinutes(start, 60);
+      const start = makeCalendarDate(startDate, event.time);
+      const end = event.endTime
+        ? makeCalendarDate(endDate, event.endTime)
+        : (endDate > startDate ? makeCalendarDate(endDate, event.time) : addMinutes(start, 60));
       lines.push(`DTSTART;TZID=${tz}:${formatIcsDateTime(start)}`);
       lines.push(`DTEND;TZID=${tz}:${formatIcsDateTime(end)}`);
     } else {
-      lines.push(`DTSTART;VALUE=DATE:${formatCompactDate(event.date)}`);
-      lines.push(`DTEND;VALUE=DATE:${formatCompactDate(addDaysToDateKey(event.date, 1))}`);
+      lines.push(`DTSTART;VALUE=DATE:${formatCompactDate(startDate)}`);
+      lines.push(`DTEND;VALUE=DATE:${formatCompactDate(addDaysToDateKey(endDate, 1))}`);
     }
 
     const rrule = buildCalendarRRule(event);
@@ -1303,7 +1408,7 @@
 
     while (d <= end) {
       const key = dateKey(d);
-      const regularNotes = notes[key] || [];
+      const regularNotes = getRegularNotesForDate(key);
       const recurringNotes = getRecurringForDate(key);
       const dayNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
 
@@ -1372,6 +1477,7 @@
         html += `<div class="notes-list">`;
         for (const note of matchingNotes) {
           const recurringClass = note.isRecurring ? 'is-recurring' : '';
+          const multiDayClass = note.isMultiDay ? `is-multi-day span-${note.spanPosition}` : '';
           const freqText = note.frequency === 'yearly' ? '\u00c5rlig' :
                            note.frequency === 'monthly' ? 'M\u00e5nedlig' :
                            note.frequency === 'biweekly' ? 'Hver 14. dag' :
@@ -1379,6 +1485,8 @@
           const recurringBadge = note.isRecurring ? `<span class="recurring-badge" title="${freqText}">&#x21bb;</span>` : '';
           const leadBadge = note.leadTime ? `<span class="lead-badge" title="Remind ${note.leadTime}min before">\u23f0-${note.leadTime >= 60 ? (note.leadTime/60) + 'h' : note.leadTime + 'm'}</span>` : '';
           const recurringId = note.recurringId || '';
+          const actionDate = note.startDate || key;
+          const noteTimeText = formatEntryTimeText(note, note.startDate || key);
 
           if (note.smartList && (note.smartList === 'todo' || note.smartList === 'shopping')) {
             const slClass = note.smartList === 'todo' ? 'smart-list-todo' : 'smart-list-shopping';
@@ -1399,18 +1507,18 @@
             const titleHtml = (note.text || '').trim()
               ? `<div class="smart-list-title note-text">${renderRichText(note.text)}</div>`
               : '';
-            html += `<div class="note-wrap" data-id="${note.id}" data-date="${key}" data-recurring-id="">
-              <div class="note-item smart-list-note ${slClass} ${recurringClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="">
+            html += `<div class="note-wrap" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="">
+              <div class="note-item smart-list-note ${slClass} ${recurringClass}" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="">
                 <div class="smart-list-inner">
                   <div class="smart-list-header"><span class="smart-list-type-label">${slLabel}</span></div>
                   ${titleHtml}
                   <div class="smart-list-rows">${rowsHtml}</div>
-                  <span class="note-time">${note.time || ''}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
+                  <span class="note-time">${noteTimeText}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
                 </div>
               </div>
               <div class="note-actions">
-                <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="">&times;</button>
-                <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="" title="Rediger">&#x270e;</button>
+                <button class="note-delete" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="">&times;</button>
+                <button class="note-edit" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="" title="Rediger">&#x270e;</button>
               </div>
             </div>`;
             continue;
@@ -1419,24 +1527,23 @@
           const doneClass = note.done ? 'done' : '';
           const checked = note.done ? 'checked' : '';
           const eventClass = note.isEvent ? 'is-event' : '';
-          const noteTimeText = note.time ? `${note.time}${note.endTime ? '-' + note.endTime : ''}` : '';
           const displayText = renderRichText(note.text);
           const checkboxHtml = note.isEvent
             ? `<span class="event-badge" title="Begivenhed">&#x1f4c5;</span>`
-            : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">`;
+            : `<input type="checkbox" class="note-checkbox" ${checked} data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}">`;
           const googleCalendarButton = note.isEvent
-            ? `<button class="google-calendar-btn" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Send to Google Calendar" aria-label="Send to Google Calendar">G</button>`
+            ? `<button class="google-calendar-btn" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}" title="Send to Google Calendar" aria-label="Send to Google Calendar">G</button>`
             : '';
-          html += `<div class="note-wrap" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
-            <div class="note-item ${doneClass} ${recurringClass} ${eventClass}" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">
+          html += `<div class="note-wrap" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}">
+            <div class="note-item ${doneClass} ${recurringClass} ${multiDayClass} ${eventClass}" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}">
               ${checkboxHtml}
               <div class="note-text">${displayText}</div>
               <span class="note-time">${noteTimeText}${leadBadge ? ' ' + leadBadge : ''}${recurringBadge ? ' ' + recurringBadge : ''}</span>
             </div>
             <div class="note-actions">
               ${googleCalendarButton}
-              <button class="note-delete" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}">&times;</button>
-              <button class="note-edit" data-id="${note.id}" data-date="${key}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
+              <button class="note-delete" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}">&times;</button>
+              <button class="note-edit" data-id="${note.id}" data-date="${actionDate}" data-recurring-id="${recurringId}" title="Rediger">&#x270e;</button>
             </div>
           </div>`;
         }
@@ -1767,6 +1874,7 @@
     const allDay = entry ? (entry.allDay ?? !entry.time) : true;
     const startTime = entry?.time || '09:00';
     const endTime = entry?.endTime || addOneHourTime(startTime);
+    const endDate = entry ? normalizeEntryEndDate(entry, date) : date;
     const leadTime = entry?.leadTime ?? null;
     const repeat = getEntryRepeatValue(context, entry);
     const location = entry?.location || '';
@@ -1797,11 +1905,17 @@
         <input type="checkbox" name="allDay"${checkedAttr(allDay)}>
         <span>All day</span>
       </label>
-      <div class="entry-editor-grid">
+      <div class="entry-editor-grid entry-editor-grid--dates">
         <label>
-          <span>Date</span>
+          <span>Start date</span>
           <input type="date" name="date" value="${escapeHtml(date)}" required>
         </label>
+        <label>
+          <span>End date</span>
+          <input type="date" name="endDate" value="${escapeHtml(endDate)}" required>
+        </label>
+      </div>
+      <div class="entry-editor-grid entry-editor-grid--two entry-editor-time-grid">
         <label class="entry-time-field">
           <span>Start</span>
           <input type="time" name="startTime" value="${escapeHtml(startTime)}">
@@ -1900,8 +2014,22 @@
       }
       updateEntryEditorTimeVisibility();
     });
+    function syncEndDate() {
+      if (!form.elements.endDate.value || form.elements.endDate.value < form.elements.date.value) {
+        form.elements.endDate.value = form.elements.date.value;
+      }
+    }
+    form.elements.date.addEventListener('change', () => {
+      syncEndDate();
+      if (form.elements.endDate.value === form.elements.date.value &&
+          (!form.elements.endTime.value || form.elements.endTime.value <= form.elements.startTime.value)) {
+        form.elements.endTime.value = addOneHourTime(form.elements.startTime.value);
+      }
+    });
+    form.elements.endDate.addEventListener('change', syncEndDate);
     form.elements.startTime.addEventListener('change', () => {
-      if (!form.elements.endTime.value || form.elements.endTime.value <= form.elements.startTime.value) {
+      if (form.elements.endDate.value === form.elements.date.value &&
+          (!form.elements.endTime.value || form.elements.endTime.value <= form.elements.startTime.value)) {
         form.elements.endTime.value = addOneHourTime(form.elements.startTime.value);
       }
     });
@@ -1946,12 +2074,14 @@
     if (!form) return null;
     const title = form.elements.title.value.trim();
     const date = form.elements.date.value;
+    const endDate = form.elements.endDate.value || date;
     const allDay = form.elements.allDay.checked;
     const startTime = form.elements.startTime.value || '09:00';
     const endTime = form.elements.endTime.value || addOneHourTime(startTime);
     if (!title) return entryEditorError('Add a title first.'), null;
     if (!date) return entryEditorError('Choose a date.'), null;
-    if (!allDay && endTime <= startTime) return entryEditorError('End time must be after start time.'), null;
+    if (endDate < date) return entryEditorError('End date cannot be before start date.'), null;
+    if (!allDay && endDate === date && endTime <= startTime) return entryEditorError('End time must be after start time.'), null;
 
     const leadTimeRaw = form.elements.leadTime.value;
     const repeat = form.elements.repeat.value || null;
@@ -1961,6 +2091,7 @@
     return {
       text,
       date,
+      endDate,
       isEvent: form.elements.kind.value !== 'task',
       allDay,
       time: allDay ? null : startTime,
@@ -1979,6 +2110,7 @@
       done: existing.done || false,
       time: draft.time,
       endTime: draft.endTime,
+      endDate: draft.endDate,
       allDay: draft.allDay,
       leadTime: draft.leadTime ?? null,
       isEvent: draft.isEvent,
@@ -1994,6 +2126,7 @@
       text: draft.text,
       time: draft.time,
       endTime: draft.endTime,
+      endDate: draft.endDate,
       allDay: draft.allDay,
       startDate: date,
       doneDate: existing.doneDate ?? null,
@@ -2021,6 +2154,7 @@
         if (rec.isEvent) maybeAutoSendEventToGoogleCalendar(getCalendarEventForAction(rec.startDate, rec.id, rec.id) || {
           id: rec.id,
           date: rec.startDate,
+          endDate: rec.endDate,
           text: rec.text,
           time: rec.time,
           endTime: rec.endTime,
@@ -2039,6 +2173,7 @@
         if (note.isEvent) maybeAutoSendEventToGoogleCalendar({
           id: note.id,
           date: draft.date,
+          endDate: note.endDate,
           text: note.text,
           time: note.time,
           endTime: note.endTime,
@@ -2543,42 +2678,65 @@
   }
 
   function getRecurringForDate(forDate) {
-    const d = parseDate(forDate);
-    return recurring
-      .filter(r => {
-        if (forDate < r.startDate) return false;
-        if (r.doneDate === forDate) return false;
+    const todayKey = dateKey(new Date());
 
-        const freq = r.frequency || 'daily';
-        if (freq === 'daily') return forDate === dateKey(new Date()) || forDate === r.startDate;
-        if (freq === 'biweekly') {
-          if (d.getDay() !== r.dayOfWeek) return false;
-          const start = parseDate(r.startDate);
-          const diffMs = d.getTime() - start.getTime();
-          const diffDays = Math.round(diffMs / 86400000);
-          const diffWeeks = Math.round(diffDays / 7);
-          return diffWeeks % 2 === 0;
-        }
-        if (freq === 'weekly') return d.getDay() === r.dayOfWeek;
-        if (freq === 'monthly') return d.getDate() === r.dayOfMonth;
-        if (freq === 'yearly') return d.getMonth() === r.month && d.getDate() === r.dayOfMonth;
-        return false;
-      })
-      .map(r => ({
-        id: `recurring-${r.id}-${forDate}`,
-        recurringId: r.id,
-        text: r.text,
-        done: false,
-        time: r.time || '',
-        endTime: r.endTime || '',
-        allDay: r.allDay ?? !r.time,
-        isRecurring: true,
-        frequency: r.frequency || 'daily',
-        leadTime: r.leadTime ?? null,
-        isEvent: r.isEvent || false,
-        location: r.location || '',
-        description: r.description || ''
-      }));
+    function recurringStartsOnDate(r, occurrenceStart) {
+      if (occurrenceStart < r.startDate) return false;
+      if (r.doneDate === occurrenceStart) return false;
+
+      const d = parseDate(occurrenceStart);
+      const freq = r.frequency || 'daily';
+      if (freq === 'daily') return occurrenceStart === todayKey || occurrenceStart === r.startDate;
+      if (freq === 'biweekly') {
+        if (d.getDay() !== r.dayOfWeek) return false;
+        const start = parseDate(r.startDate);
+        const diffMs = d.getTime() - start.getTime();
+        const diffDays = Math.round(diffMs / 86400000);
+        const diffWeeks = Math.round(diffDays / 7);
+        return diffWeeks % 2 === 0;
+      }
+      if (freq === 'weekly') return d.getDay() === r.dayOfWeek;
+      if (freq === 'monthly') return d.getDate() === r.dayOfMonth;
+      if (freq === 'yearly') return d.getMonth() === r.month && d.getDate() === r.dayOfMonth;
+      return false;
+    }
+
+    function occurrenceStartForDate(r) {
+      const durationDays = getDateKeyDiff(r.startDate, normalizeEntryEndDate(r, r.startDate));
+      for (let offset = 0; offset <= durationDays; offset++) {
+        const occurrenceStart = addDaysToDateKey(forDate, -offset);
+        if (recurringStartsOnDate(r, occurrenceStart)) return occurrenceStart;
+      }
+      return null;
+    }
+
+    return recurring
+      .flatMap(r => {
+        const occurrenceStart = occurrenceStartForDate(r);
+        if (!occurrenceStart) return [];
+        const durationDays = getDateKeyDiff(r.startDate, normalizeEntryEndDate(r, r.startDate));
+        const occurrenceEnd = addDaysToDateKey(occurrenceStart, durationDays);
+        return [{
+          id: `recurring-${r.id}-${occurrenceStart}-${forDate}`,
+          recurringId: r.id,
+          text: r.text,
+          done: false,
+          time: r.time || '',
+          endTime: r.endTime || '',
+          allDay: r.allDay ?? !r.time,
+          startDate: occurrenceStart,
+          endDate: occurrenceEnd,
+          occurrenceDate: forDate,
+          isMultiDay: occurrenceEnd > occurrenceStart,
+          spanPosition: getSpanPosition(occurrenceStart, occurrenceEnd, forDate),
+          isRecurring: true,
+          frequency: r.frequency || 'daily',
+          leadTime: r.leadTime ?? null,
+          isEvent: r.isEvent || false,
+          location: r.location || '',
+          description: r.description || ''
+        }];
+      });
   }
 
   // ---- Per-note lead time parsing ----
@@ -3678,7 +3836,7 @@
 
   function markNotifSent(noteId) {
     const sent = getNotifSent();
-    sent.ids.push(noteId);
+    if (!sent.ids.includes(noteId)) sent.ids.push(noteId);
     localStorage.setItem(NOTIF_SENT_KEY, JSON.stringify(sent));
   }
 
@@ -3839,6 +3997,25 @@
     } catch { return false; }
   }
 
+  async function claimNotificationDelivery(claimId, payload) {
+    if (!syncReady || typeof window.SupabaseSync?.claim !== 'function') return true;
+    try {
+      return await window.SupabaseSync.claim(claimId, {
+        ...payload,
+        claimedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn('Notification claim failed:', claimId, err);
+      return true;
+    }
+  }
+
+  async function sendTelegramMessageOnce(claimId, text, payload) {
+    const claimed = await claimNotificationDelivery(claimId, payload);
+    if (!claimed) return false;
+    return sendTelegramMessage(text);
+  }
+
   function waitForServiceWorkerReady(timeoutMs = 1200) {
     return Promise.race([
       navigator.serviceWorker.ready,
@@ -3913,7 +4090,11 @@
           noteLeadMinutes > 0
             ? `in ${noteLeadMinutes} minute${noteLeadMinutes !== 1 ? 's' : ''}`
             : 'now';
-        const message = `Sir — ${when}: ${cleanText}`;
+        const message = `Sir - ${when}: ${cleanText}`;
+        const telegramMessage = `<b>Sir</b> - ${when}: ${escapeHtml(cleanText)}`;
+
+        markNotifSent(uniqueId);
+        if (!sent.ids.includes(uniqueId)) sent.ids.push(uniqueId);
 
         if (s.browserEnabled) {
           sendBrowserNotification('Jarvis', message, uniqueId);
@@ -3922,10 +4103,12 @@
           triggerReminderAlarm(cleanText || message, `Reminder ${when}`);
         }
         if (s.telegramEnabled) {
-          sendTelegramMessage(`<b>Sir</b> &mdash; ${when}: ${cleanText}`);
+          sendTelegramMessageOnce(`telegramReminderSent:${uniqueId}`, telegramMessage, {
+            type: 'reminder',
+            id: uniqueId,
+            date: todayKey
+          });
         }
-
-        markNotifSent(uniqueId);
       }
     }
   }
@@ -3951,7 +4134,7 @@
     const smartTodoNotes = dayRaw.filter(n => n.smartList === 'todo');
     const smartShopNotes = dayRaw.filter(n => n.smartList === 'shopping');
 
-    const regularNotes = sortNotesByTime(dayRaw.filter(n => !n.smartList && !n.done));
+    const regularNotes = sortNotesByTime(getRegularNotesForDate(todayKey).filter(n => !n.smartList && !n.done));
     const recurringNotes = getRecurringForDate(todayKey).filter(n => !n.done);
     const allNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
     const calendarEntries = allNotes.filter(n => n.isEvent === true);
@@ -3992,7 +4175,7 @@
     if (calendarEntries.length === 0) return null;
 
     let msg = `<b>Good morning, sir.</b>\n`;
-    msg += `<i>Your ${dayName} briefing &mdash; ${monthName} ${dayNum}</i>\n\n`;
+    msg += `<i>Your ${dayName} briefing - ${monthName} ${dayNum}</i>\n\n`;
 
     const timed = allNotes.filter(n => n.time);
     const untimed = allNotes.filter(n => !n.time);
@@ -4066,7 +4249,14 @@
       const msgHtml = buildMorningBriefing();
       if (msgHtml) {
         const plain = briefingHtmlToPlain(msgHtml);
-        if (s.telegramEnabled) sendTelegramMessage(msgHtml);
+        if (s.telegramEnabled) {
+          sendTelegramMessageOnce(`telegramMorningBriefSent:${todayKey}`, msgHtml, {
+            type: 'morningBriefing',
+            date: todayKey
+          }).then(ok => {
+            if (ok) markMorningBriefHandled(todayKey);
+          });
+        }
         if (s.browserEnabled) sendBrowserNotification('Jarvis', plain);
         markNotifSent(briefingId);
       } else {

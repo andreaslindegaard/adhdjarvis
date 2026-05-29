@@ -75,6 +75,22 @@
         });
     },
 
+    claim(key, data) {
+      if (!client) return Promise.resolve(false);
+      return client
+        .from('planner_data')
+        .insert({
+          key,
+          payload: data || {},
+          updated_at: new Date().toISOString()
+        })
+        .then(({ error }) => {
+          if (!error) return true;
+          if (error.code === '23505') return false;
+          throw error;
+        });
+    },
+
     listen(key, callback) {
       const filter = `key=eq.${key}`;
       const channel = client

@@ -55,6 +55,16 @@ function parseDateKey(key: string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+function isDateKey(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeEndDate(entry: { endDate?: string }, startDate: string): string {
+  return isDateKey(entry.endDate) && entry.endDate >= startDate
+    ? entry.endDate
+    : startDate;
+}
+
 function sortNotesByTime(dayNotes: Note[]): Note[] {
   return [...dayNotes].sort((a, b) => {
     const timeA = a.time || "99:99";
@@ -67,6 +77,7 @@ type Recurring = {
   id: string;
   text: string;
   time?: string;
+  endDate?: string;
   startDate: string;
   doneDate?: string | null;
   frequency?: string;
@@ -82,10 +93,50 @@ type Note = {
   text: string;
   done?: boolean;
   time?: string;
+  endDate?: string;
+  startDate?: string;
+  occurrenceDate?: string;
+  isMultiDay?: boolean;
   smartList?: string;
   listItems?: { done?: boolean; text?: string }[];
   isRecurring?: boolean;
+  isEvent?: boolean;
 };
+
+function getNotesForDate(
+  notes: Record<string, Note[]>,
+  forDate: string,
+): Note[] {
+  const direct = (notes[forDate] || []).map((note) => ({
+    ...note,
+    startDate: forDate,
+    endDate: normalizeEndDate(note, forDate),
+    occurrenceDate: forDate,
+    isMultiDay: normalizeEndDate(note, forDate) > forDate,
+  }));
+  const spanning: Note[] = [];
+
+  for (const [startDate, dayNotes] of Object.entries(notes)) {
+    if (startDate === forDate || !isDateKey(startDate) || !Array.isArray(dayNotes)) {
+      continue;
+    }
+    for (const note of dayNotes) {
+      if (!note || note.smartList) continue;
+      const endDate = normalizeEndDate(note, startDate);
+      if (endDate > startDate && forDate > startDate && forDate <= endDate) {
+        spanning.push({
+          ...note,
+          startDate,
+          endDate,
+          occurrenceDate: forDate,
+          isMultiDay: true,
+        });
+      }
+    }
+  }
+
+  return [...direct, ...spanning];
+}
 
 function getRecurringForDate(
   recurring: Recurring[],
@@ -144,12 +195,13 @@ function buildMorningBriefing(
   const smartShopNotes = dayRaw.filter((n) => n.smartList === "shopping");
 
   const regularNotes = sortNotesByTime(
-    dayRaw.filter((n) => !n.smartList && !n.done),
+    getNotesForDate(notes, todayKey).filter((n) => !n.smartList && !n.done),
   );
   const recurringNotes = getRecurringForDate(recurring, todayKey, todayKey).filter(
     (n) => !n.done,
   );
   const allNotes = sortNotesByTime([...regularNotes, ...recurringNotes]);
+  const calendarEntries = allNotes.filter((n) => n.isEvent === true);
 
   const todoBlocks: string[] = [];
   for (const n of smartTodoNotes) {
@@ -188,7 +240,7 @@ function buildMorningBriefing(
   const hasTodo = todoBlocks.length > 0;
   const hasShop = shopBlocks.length > 0;
 
-  if (allNotes.length === 0 && !hasTodo && !hasShop) return null;
+  if (calendarEntries.length === 0) return null;
 
   const todayDate = parseDateKey(todayKey);
   const dayName = WEEKDAYS[todayDate.getUTCDay()];
@@ -196,7 +248,7 @@ function buildMorningBriefing(
   const dayNum = todayDate.getUTCDate();
 
   let msg = `<b>Good morning, sir.</b>\n`;
-  msg += `<i>Your ${dayName} briefing &mdash; ${monthName} ${dayNum}</i>\n\n`;
+  msg += `<i>Your ${dayName} briefing - ${monthName} ${dayNum}</i>\n\n`;
 
   const timed = allNotes.filter((n) => n.time);
   const untimed = allNotes.filter((n) => !n.time);
@@ -285,6 +337,27 @@ async function markMorningBriefHandled(
   );
 
   return error?.message || null;
+}
+
+async function claimMorningBriefDelivery(
+  supabase: ReturnType<typeof createClient>,
+  todayKey: string,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("planner_data").insert({
+    key: `telegramMorningBriefSent:${todayKey}`,
+    payload: {
+      type: "morningBriefing",
+      date: todayKey,
+      source: "supabase",
+      claimedAt: now,
+    },
+    updated_at: now,
+  });
+
+  if (!error) return true;
+  if (error.code === "23505") return false;
+  throw new Error(error.message);
 }
 
 Deno.serve(async (req) => {
@@ -391,6 +464,34 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ ok: true, skipped: "empty_day", sent: false, todayKey, timeZone }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  let claimed = false;
+  try {
+    claimed = await claimMorningBriefDelivery(supabase, todayKey);
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: err instanceof Error ? err.message : "claim_failed",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!claimed) {
+    const handledErr = await markMorningBriefHandled(supabase, todayKey);
+    if (handledErr) {
+      return new Response(
+        JSON.stringify({ ok: false, skipped: "already_claimed", persistError: handledErr }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, skipped: "already_claimed", sent: false, todayKey, timeZone }),
       { headers: { "Content-Type": "application/json" } },
     );
   }

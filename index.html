@@ -1302,7 +1302,10 @@
     .note-time {
       font-size: 0.68rem;
       color: var(--text-dim);
-      white-space: nowrap;
+      max-width: 46%;
+      text-align: right;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
       margin-top: 3px;
       font-weight: 500;
     }
@@ -1623,6 +1626,10 @@
     }
 
     .entry-editor-grid--two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entry-editor-grid--dates {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -2969,6 +2976,11 @@
       font-weight: 500;
     }
 
+    .note-item.is-multi-day .note-time {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
     /* Tasks (not events): soft sage gradient — same idea as events, different hue */
     .note-item:not(.is-event) {
       background: linear-gradient(135deg, var(--task-gradient-start) 0%, var(--surface) 58%);
@@ -4183,8 +4195,8 @@
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabase-sync.js?v=4"></script>
-<script src="app.js?v=91"></script>
+<script src="supabase-sync.js?v=5"></script>
+<script src="app.js?v=93"></script>
 
 </body>
 </html>
