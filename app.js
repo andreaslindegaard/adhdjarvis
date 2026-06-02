@@ -880,19 +880,6 @@
     URL.revokeObjectURL(url);
   }
 
-  function isGoogleCalendarAutoSendEnabled() {
-    try {
-      return !!loadNotifSettings().googleCalendarAutoSend;
-    } catch {
-      return false;
-    }
-  }
-
-  function maybeAutoSendEventToGoogleCalendar(event) {
-    if (!isGoogleCalendarAutoSendEnabled()) return;
-    window.open(buildGoogleCalendarUrl(event), '_blank', 'noopener');
-  }
-
   function renderTagsInText(text) {
     return text.replace(/#(\w+)/g, '<span class="note-tag">#$1</span>');
   }
@@ -2151,37 +2138,12 @@
         const rec = makeRecurringPayload(draft, draft.date, { id: crypto.randomUUID() });
         recurring.push(rec);
         saveRecurring();
-        if (rec.isEvent) maybeAutoSendEventToGoogleCalendar(getCalendarEventForAction(rec.startDate, rec.id, rec.id) || {
-          id: rec.id,
-          date: rec.startDate,
-          endDate: rec.endDate,
-          text: rec.text,
-          time: rec.time,
-          endTime: rec.endTime,
-          allDay: rec.allDay,
-          leadTime: rec.leadTime,
-          location: rec.location,
-          description: rec.description,
-          recurring: rec
-        });
       } else {
         if (!notes[draft.date]) notes[draft.date] = [];
         const note = makeEntryPayload(draft, { id: crypto.randomUUID() });
         notes[draft.date].push(note);
         notes[draft.date] = sortNotesByTime(notes[draft.date]);
         saveNotes(notes);
-        if (note.isEvent) maybeAutoSendEventToGoogleCalendar({
-          id: note.id,
-          date: draft.date,
-          endDate: note.endDate,
-          text: note.text,
-          time: note.time,
-          endTime: note.endTime,
-          allDay: note.allDay,
-          leadTime: note.leadTime,
-          location: note.location,
-          description: note.description
-        });
       }
       closeEntryEditor();
       render();
@@ -3766,9 +3728,6 @@
   const NOTIF_KEY = 'endless-planner-notif-settings';
   const NOTIF_SENT_KEY = 'endless-planner-notif-sent';
   const MORNING_BRIEF_SENT_LS = 'endless-planner-morning-brief-sent-date';
-  const DEFAULT_NEWS_HUNTER_ITEMS = [
-    'Claude Opus 4.8 on ARC Prize leaderboard and DeepSWE leaderboard'
-  ];
   let morningBriefSentDate = null;
   try {
     morningBriefSentDate = localStorage.getItem(MORNING_BRIEF_SENT_LS);
@@ -3784,48 +3743,24 @@
     leadTime: 15,
     phoneAlarmEnabled: true,
     morningBriefing: true,
-    newsHunterEnabled: true,
-    newsHunterItemsText: DEFAULT_NEWS_HUNTER_ITEMS.join('\n'),
-    newsHunterItems: [...DEFAULT_NEWS_HUNTER_ITEMS],
     morningTime: '06:30',
-    timeZone: '',
-    googleCalendarAutoSend: false
+    timeZone: ''
   };
 
   function sanitizeNotifSettings(raw) {
-    const data = raw && typeof raw === 'object' ? { ...raw } : {};
-    if (typeof data.phoneAlarmEnabled !== 'boolean' && typeof data.alarmEnabled === 'boolean') {
-      data.phoneAlarmEnabled = data.alarmEnabled;
-    }
-    if (typeof data.newsHunterEnabled !== 'boolean') {
-      if (typeof data.newsGoallyEnabled === 'boolean') data.newsHunterEnabled = data.newsGoallyEnabled;
-      else if (typeof data.opus48LeaderboardWatch === 'boolean') data.newsHunterEnabled = data.opus48LeaderboardWatch;
-    }
-    if (typeof data.newsHunterItemsText !== 'string' && Array.isArray(data.newsHunterItems)) {
-      data.newsHunterItemsText = data.newsHunterItems.map(item => String(item || '').trim()).filter(Boolean).join('\n');
-    }
-    if (typeof data.newsHunterItemsText === 'string') {
-      data.newsHunterItems = parseNewsHunterItems(data.newsHunterItemsText);
-    } else if (Array.isArray(data.newsHunterItems)) {
-      data.newsHunterItems = data.newsHunterItems.map(item => String(item || '').trim()).filter(Boolean);
-    }
-    delete data.alarmEnabled;
-    delete data.newsGoallyEnabled;
-    delete data.opus48LeaderboardWatch;
-    return data;
-  }
-
-  function parseNewsHunterItems(text) {
-    return String(text || '')
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(Boolean);
-  }
-
-  function autoResizeSettingsTextarea(textarea) {
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    const data = raw && typeof raw === 'object' ? raw : {};
+    const clean = {};
+    if (typeof data.browserEnabled === 'boolean') clean.browserEnabled = data.browserEnabled;
+    if (typeof data.telegramEnabled === 'boolean') clean.telegramEnabled = data.telegramEnabled;
+    if (typeof data.telegramBotToken === 'string') clean.telegramBotToken = data.telegramBotToken;
+    if (typeof data.telegramChatId === 'string') clean.telegramChatId = data.telegramChatId;
+    if (Number.isFinite(data.leadTime)) clean.leadTime = data.leadTime;
+    if (typeof data.phoneAlarmEnabled === 'boolean') clean.phoneAlarmEnabled = data.phoneAlarmEnabled;
+    else if (typeof data.alarmEnabled === 'boolean') clean.phoneAlarmEnabled = data.alarmEnabled;
+    if (typeof data.morningBriefing === 'boolean') clean.morningBriefing = data.morningBriefing;
+    if (typeof data.morningTime === 'string') clean.morningTime = data.morningTime;
+    if (typeof data.timeZone === 'string') clean.timeZone = data.timeZone;
+    return clean;
   }
 
   function loadNotifSettings() {
@@ -4335,16 +4270,7 @@
     document.getElementById('telegramChatId').value = s.telegramChatId || '';
     document.getElementById('notifLeadTime').value = String(s.leadTime ?? 15);
     document.getElementById('morningBriefingToggle').checked = !!s.morningBriefing;
-    document.getElementById('newsHunterToggle').checked = !!s.newsHunterEnabled;
-    const newsHunterTextarea = document.getElementById('newsHunterItemsTextarea');
-    if (newsHunterTextarea) {
-      newsHunterTextarea.value = typeof s.newsHunterItemsText === 'string'
-        ? s.newsHunterItemsText
-        : (Array.isArray(s.newsHunterItems) ? s.newsHunterItems.join('\n') : '');
-      autoResizeSettingsTextarea(newsHunterTextarea);
-    }
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
-    document.getElementById('googleCalendarAutoSendToggle').checked = !!s.googleCalendarAutoSend;
     document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
     document.getElementById('pushupYearGoalInput').value = String(pushupWidget.yearGoal ?? DEFAULT_PUSHUP_YEAR_GOAL);
     refreshSettingsExport();
@@ -4409,10 +4335,6 @@
     }
   });
 
-  document.getElementById('newsHunterItemsTextarea').addEventListener('input', (e) => {
-    autoResizeSettingsTextarea(e.target);
-  });
-
   document.getElementById('telegramTestBtn').addEventListener('click', async () => {
     const token = document.getElementById('telegramBotToken').value.trim();
     const chatId = document.getElementById('telegramChatId').value.trim();
@@ -4473,7 +4395,6 @@
   });
 
   document.getElementById('notifModalSave').addEventListener('click', () => {
-    const newsHunterItemsText = document.getElementById('newsHunterItemsTextarea').value.replace(/\r\n/g, '\n').trim();
     const s = {
       browserEnabled: document.getElementById('browserNotifToggle').checked,
       telegramEnabled: document.getElementById('telegramNotifToggle').checked,
@@ -4482,11 +4403,7 @@
       leadTime: parseInt(document.getElementById('notifLeadTime').value) || 0,
       phoneAlarmEnabled: document.getElementById('alarmNotifToggle').checked,
       morningBriefing: document.getElementById('morningBriefingToggle').checked,
-      newsHunterEnabled: document.getElementById('newsHunterToggle').checked,
-      newsHunterItemsText,
-      newsHunterItems: parseNewsHunterItems(newsHunterItemsText),
       morningTime: document.getElementById('morningBriefingTime').value || '06:30',
-      googleCalendarAutoSend: document.getElementById('googleCalendarAutoSendToggle').checked,
       timeZone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : ''

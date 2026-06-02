@@ -2498,12 +2498,6 @@
       resize: vertical;
     }
 
-    .settings-textarea--auto {
-      min-height: 96px;
-      overflow: hidden;
-      resize: none;
-    }
-
     .settings-textarea:focus {
       outline: none;
       border-color: var(--accent);
@@ -4029,18 +4023,6 @@
 
             <div class="settings-card">
               <label class="settings-toggle">
-                <input type="checkbox" id="newsHunterToggle">
-                <span>News Hunter</span>
-              </label>
-              <label class="settings-field-label" for="newsHunterItemsTextarea">
-                Things to hunt for
-                <textarea class="settings-textarea settings-textarea--auto" id="newsHunterItemsTextarea" rows="3" placeholder="One news hunt per line"></textarea>
-              </label>
-              <p class="settings-note">Telegram only. Jarvis stays quiet until a saved hunt is confirmed.</p>
-            </div>
-
-            <div class="settings-card">
-              <label class="settings-toggle">
                 <input type="checkbox" id="telegramNotifToggle">
                 <span>Telegram messages</span>
               </label>
@@ -4104,14 +4086,6 @@
             <div class="settings-section-head">
               <h4>Calendar</h4>
               <p>Calendar view and external calendar handoff.</p>
-            </div>
-
-            <div class="settings-card">
-              <label class="settings-toggle">
-                <input type="checkbox" id="googleCalendarAutoSendToggle">
-                <span>Auto send events to Google Calendar</span>
-              </label>
-              <p class="settings-note">Opens Google Calendar when you create an event, ready to save.</p>
             </div>
 
             <div class="settings-card">
