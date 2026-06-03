@@ -48,7 +48,7 @@
   const PUSHUP_WIDGET_KEY = 'endless-planner-pushup-widget';
   const DEFAULT_PUSHUP_YEAR_GOAL = 10000;
   const DEFAULT_PUSHUP_MONTH_GOAL = 800;
-  const PUSHUP_SET_WINDOW_MS = 5 * 1000;
+  const PUSHUP_SET_WINDOW_MS = 4 * 1000;
 
   function loadNotes() {
     try {
