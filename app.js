@@ -884,15 +884,71 @@
     return text.replace(/#(\w+)/g, '<span class="note-tag">#$1</span>');
   }
 
+  function decodeLinkUrl(url) {
+    return url.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+  }
+
+  function cleanLinkSegment(segment) {
+    try {
+      segment = decodeURIComponent(segment);
+    } catch {}
+
+    return segment
+      .replace(/\.(html?|php|aspx?)$/i, '')
+      .replace(/[-_+]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function isUsefulLinkSegment(segment) {
+    if (!segment) return false;
+    const lower = segment.toLowerCase();
+    const genericSegments = new Set([
+      'd',
+      'default',
+      'edit',
+      'file',
+      'home',
+      'index',
+      'login',
+      'preview',
+      'share',
+      'view',
+      'watch'
+    ]);
+    if (genericSegments.has(lower)) return false;
+    if (/^\d+$/.test(segment)) return false;
+    if (/^[a-f0-9-]{12,}$/i.test(segment)) return false;
+    return true;
+  }
+
+  function shortenLinkLabel(label) {
+    const maxLength = 46;
+    if (label.length <= maxLength) return label;
+    return `${label.slice(0, maxLength - 3).trim()}...`;
+  }
+
+  function getLinkPillLabel(url) {
+    const decodedUrl = decodeLinkUrl(url);
+    try {
+      const parsed = new URL(decodedUrl);
+      const domain = parsed.hostname.replace(/^www\./, '');
+      const usefulSegment = parsed.pathname
+        .split('/')
+        .filter(Boolean)
+        .reverse()
+        .map(cleanLinkSegment)
+        .find(isUsefulLinkSegment);
+      return shortenLinkLabel(usefulSegment ? `${domain} / ${usefulSegment}` : domain);
+    } catch {
+      return shortenLinkLabel(decodedUrl.replace(/^https?:\/\//, '').replace(/^www\./, ''));
+    }
+  }
+
   function linkifyUrls(text) {
-    return text.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
-      try {
-        const parsed = new URL(url);
-        const domain = parsed.hostname.replace(/^www\./, '');
-        return `<span class="link-wrap"><a href="${url}" target="_blank" rel="noopener" class="note-link" title="${url}">${domain}</a><button class="link-delete" data-url="${url}" title="Fjern link">&times;</button></span>`;
-      } catch {
-        return `<span class="link-wrap"><a href="${url}" target="_blank" rel="noopener" class="note-link">${url}</a><button class="link-delete" data-url="${url}" title="Fjern link">&times;</button></span>`;
-      }
+    return text.replace(/(https?:\/\/[^\s<]+)/gi, (url) => {
+      const label = escapeHtml(getLinkPillLabel(url));
+      return `<span class="link-wrap"><a href="${url}" target="_blank" rel="noopener" class="note-link" title="${url}"><span class="note-link-label">${label}</span></a><button class="link-delete" data-url="${url}" title="Fjern link">&times;</button></span>`;
     });
   }
 
