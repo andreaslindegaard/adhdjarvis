@@ -1327,7 +1327,7 @@
           <small>I går: ${formatNumber(stats.yesterdayTotal)}</small>
         </div>
         <div class="pushup-actions" aria-label="Push-up controls">
-          <button type="button" class="pushup-subtract-btn" data-action="pushup-minus" title="Remove push-up" aria-label="Remove push-up"${subtractDisabled}>&minus;</button>
+          <button type="button" class="pushup-subtract-btn" data-action="pushup-minus" title="Remove push-up" aria-label="Remove push-up"${subtractDisabled}><span aria-hidden="true"></span></button>
           <button type="button" class="pushup-add-btn" data-action="pushup-plus" title="Add push-up" aria-label="Add push-up">+</button>
         </div>
       </div>
