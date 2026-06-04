@@ -578,7 +578,7 @@
 
     .pushup-main-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 52px;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 12px;
       align-items: center;
     }
@@ -618,19 +618,56 @@
       overflow-wrap: anywhere;
     }
 
+    .pushup-actions {
+      display: grid;
+      grid-template-columns: 30px 52px;
+      gap: 6px;
+      align-items: center;
+      justify-content: end;
+    }
+
+    .pushup-subtract-btn,
+    .pushup-add-btn {
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      line-height: 1;
+      font-weight: 700;
+      transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+
+    .pushup-subtract-btn {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #cbd8cc;
+      background: #f5faf3;
+      color: #527461;
+      font-size: 1.2rem;
+      box-shadow: none;
+    }
+
+    .pushup-subtract-btn:hover:not(:disabled) {
+      border-color: #aebfac;
+      background: #edf5ea;
+      transform: translateY(-1px);
+    }
+
+    .pushup-subtract-btn:active:not(:disabled) {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .pushup-subtract-btn:disabled {
+      cursor: default;
+      opacity: 0.38;
+    }
+
     .pushup-add-btn {
       width: 52px;
       height: 52px;
-      border: none;
-      border-radius: 50%;
       background: #527461;
       color: #fff;
-      cursor: pointer;
       font-size: 2rem;
-      line-height: 1;
-      font-weight: 700;
       box-shadow: 0 8px 18px rgba(82, 116, 97, 0.24);
-      transition: transform 0.12s ease, background 0.12s ease;
     }
 
     .pushup-add-btn:hover {

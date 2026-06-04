@@ -416,6 +416,37 @@
     savePushupWidget();
   }
 
+  function subtractPushupRep() {
+    const now = new Date();
+    const set = getActivePushupSet(now);
+    if (!set || set.count <= 0) return;
+
+    set.count = Math.max(0, set.count - 1);
+    set.updatedAt = now.toISOString();
+
+    if (set.count === 0) {
+      pushupWidget.sets = pushupWidget.sets.filter(candidate => candidate.id !== set.id);
+    }
+
+    if (pushupWidget.lastRecord?.type === 'set' && pushupWidget.lastRecord?.setId === set.id) {
+      const bestOtherSetCount = pushupWidget.sets.reduce((best, candidate) => {
+        if (candidate.id === set.id) return best;
+        return Math.max(best, Number.parseInt(candidate.count, 10) || 0);
+      }, 0);
+
+      pushupWidget.lastRecord = set.count > bestOtherSetCount
+        ? {
+            type: 'set',
+            setId: set.id,
+            count: set.count,
+            at: now.toISOString()
+          }
+        : null;
+    }
+
+    savePushupWidget();
+  }
+
   // ---- Danish holidays (helligdage) ----
   function computeEaster(year) {
     const a = year % 19;
@@ -1286,6 +1317,7 @@
     const activeSetLabel = activeSet
       ? `${formatNumber(activeSet.count)} push-up${activeSet.count === 1 ? '' : 's'}`
       : '';
+    const subtractDisabled = activeSet ? '' : ' disabled';
 
     return `<div class="pushup-widget">
       <div class="pushup-main-row">
@@ -1294,7 +1326,10 @@
           <strong>${formatNumber(stats.todayTotal)}</strong>
           <small>I går: ${formatNumber(stats.yesterdayTotal)}</small>
         </div>
-        <button type="button" class="pushup-add-btn" data-action="pushup-plus" title="Add push-up" aria-label="Add push-up">+</button>
+        <div class="pushup-actions" aria-label="Push-up controls">
+          <button type="button" class="pushup-subtract-btn" data-action="pushup-minus" title="Remove push-up" aria-label="Remove push-up"${subtractDisabled}>&minus;</button>
+          <button type="button" class="pushup-add-btn" data-action="pushup-plus" title="Add push-up" aria-label="Add push-up">+</button>
+        </div>
       </div>
       ${activeSet ? `<div class="pushup-set-timer" data-expires-at="${setExpiresAt}">
         <div class="pushup-set-timer-top">
@@ -1779,6 +1814,13 @@
       const pushupAddBtn = e.target.closest('[data-action="pushup-plus"]');
       if (pushupAddBtn) {
         addPushupRep();
+        renderPushupWidgetInPlace();
+        return;
+      }
+
+      const pushupSubtractBtn = e.target.closest('[data-action="pushup-minus"]');
+      if (pushupSubtractBtn) {
+        subtractPushupRep();
         renderPushupWidgetInPlace();
         return;
       }
