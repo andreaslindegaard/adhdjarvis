@@ -4095,7 +4095,7 @@
           <button type="button" class="settings-menu-item" data-settings-section="calendar" role="tab" aria-selected="false" aria-controls="settingsPanelCalendar">Calendar</button>
           <button type="button" class="settings-menu-item" data-settings-section="smartlinks" role="tab" aria-selected="false" aria-controls="settingsPanelSmartLinks">Smart Links</button>
           <button type="button" class="settings-menu-item" data-settings-section="data" role="tab" aria-selected="false" aria-controls="settingsPanelData">Data</button>
-          <button type="button" class="settings-menu-item" data-settings-section="pushups" role="tab" aria-selected="false" aria-controls="settingsPanelPushups">Push-ups</button>
+          <button type="button" class="settings-menu-item" data-settings-section="pushups" role="tab" aria-selected="false" aria-controls="settingsPanelPushups">Workout</button>
         </nav>
 
         <div class="settings-content">
@@ -4230,11 +4230,12 @@
 
           <section class="settings-section" id="settingsPanelPushups" data-settings-panel="pushups" role="tabpanel" hidden>
             <div class="settings-section-head">
-              <h4>Push-up goals</h4>
-              <p>Goal targets for the tracker in the to-do panel.</p>
+              <h4>Workout goals</h4>
+              <p>Goal targets for the workout trackers.</p>
             </div>
 
             <div class="settings-card">
+              <h5 class="settings-card-title">Push-ups</h5>
               <div class="settings-grid">
                 <label class="settings-field-label">
                   Monthly goal
@@ -4243,6 +4244,20 @@
                 <label class="settings-field-label">
                   Yearly goal
                   <input class="settings-input" type="number" id="pushupYearGoalInput" min="0" step="100">
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <h5 class="settings-card-title">Air squats</h5>
+              <div class="settings-grid">
+                <label class="settings-field-label">
+                  Monthly goal
+                  <input class="settings-input" type="number" id="airSquatMonthGoalInput" min="0" step="50">
+                </label>
+                <label class="settings-field-label">
+                  Yearly goal
+                  <input class="settings-input" type="number" id="airSquatYearGoalInput" min="0" step="100">
                 </label>
               </div>
             </div>

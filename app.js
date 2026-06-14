@@ -46,8 +46,11 @@
   const LAYOUT_KEY = 'endless-planner-layout';
   const STANDALONE_TODOS_KEY = 'endless-planner-standalone-todos';
   const PUSHUP_WIDGET_KEY = 'endless-planner-pushup-widget';
+  const AIR_SQUAT_WIDGET_KEY = 'endless-planner-air-squat-widget';
   const DEFAULT_PUSHUP_YEAR_GOAL = 10000;
   const DEFAULT_PUSHUP_MONTH_GOAL = 800;
+  const DEFAULT_AIR_SQUAT_YEAR_GOAL = 10000;
+  const DEFAULT_AIR_SQUAT_MONTH_GOAL = 800;
   const PUSHUP_SET_WINDOW_MS = 4 * 1000;
 
   function loadNotes() {
@@ -137,6 +140,29 @@
     if (syncReady) SupabaseSync.save('pushupWidget', pushupWidget);
   }
 
+  function loadAirSquatWidget() {
+    try {
+      const widget = normalizePushupWidget(JSON.parse(localStorage.getItem(AIR_SQUAT_WIDGET_KEY)));
+      if (!localStorage.getItem(AIR_SQUAT_WIDGET_KEY)) {
+        widget.yearGoal = DEFAULT_AIR_SQUAT_YEAR_GOAL;
+        widget.monthGoal = DEFAULT_AIR_SQUAT_MONTH_GOAL;
+      }
+      return widget;
+    } catch {
+      const widget = normalizePushupWidget(null);
+      widget.yearGoal = DEFAULT_AIR_SQUAT_YEAR_GOAL;
+      widget.monthGoal = DEFAULT_AIR_SQUAT_MONTH_GOAL;
+      return widget;
+    }
+  }
+
+  function saveAirSquatWidget() {
+    airSquatWidget = normalizePushupWidget(airSquatWidget);
+    localStorage.setItem(AIR_SQUAT_WIDGET_KEY, JSON.stringify(airSquatWidget));
+    airSquatLocalWriteAt = Date.now();
+    if (syncReady) SupabaseSync.save('airSquatWidget', airSquatWidget);
+  }
+
   const defaultSmartLinks = [
     {
       keywords: ['hairdresser', 'hairdressers', 'cut my hair', 'haircut', 'hair cut', 'fris\u00f8r', 'frisor'],
@@ -178,8 +204,10 @@
   let todoPanelCompletedExpanded = false;
 
   let pushupWidget = loadPushupWidget();
+  let airSquatWidget = loadAirSquatWidget();
   let pushupCountdownTimer = null;
   let pushupLocalWriteAt = 0;
+  let airSquatLocalWriteAt = 0;
 
   // recurring structure: [ { id, text, time, startDate, endDate, doneDate } ] — checkbox completes the series (removed); doneDate unused for that path; delete (×) also removes
   let recurring = loadRecurring();
@@ -233,9 +261,9 @@
     return Number.isNaN(d.getTime()) ? new Date() : d;
   }
 
-  function getLatestPushupSet() {
-    if (!pushupWidget.sets.length) return null;
-    return pushupWidget.sets.reduce((latest, set) => {
+  function getLatestPushupSet(widget = pushupWidget) {
+    if (!widget.sets.length) return null;
+    return widget.sets.reduce((latest, set) => {
       if (!latest) return set;
       const latestTime = new Date(latest.updatedAt || latest.startedAt || 0).getTime();
       const setTime = new Date(set.updatedAt || set.startedAt || 0).getTime();
@@ -276,8 +304,8 @@
     };
   }
 
-  function getActivePushupSet(now = new Date()) {
-    const latest = getLatestPushupSet();
+  function getActivePushupSet(now = new Date(), widget = pushupWidget) {
+    const latest = getLatestPushupSet(widget);
     if (!latest) return null;
     const updatedAt = new Date(latest.updatedAt || latest.startedAt || 0);
     if (Number.isNaN(updatedAt.getTime())) return null;
@@ -292,7 +320,7 @@
     return Math.max(0, PUSHUP_SET_WINDOW_MS - (now.getTime() - updatedAt.getTime()));
   }
 
-  function getPushupStats(now = new Date()) {
+  function getPushupStats(now = new Date(), widget = pushupWidget) {
     const dayTotals = new Map();
     const weekTotals = new Map();
     const monthTotals = new Map();
@@ -308,7 +336,7 @@
     let allTimeTotal = 0;
     let bestSet = { count: 0, date: '' };
 
-    for (const set of pushupWidget.sets) {
+    for (const set of widget.sets) {
       const count = Math.max(0, Number.parseInt(set.count, 10) || 0);
       if (!count) continue;
       const setDate = getPushupSetDate(set);
@@ -343,10 +371,10 @@
       if (count > bestMonth.count) bestMonth = { count, key };
     }
 
-    const monthGoal = Math.max(0, Number.parseInt(pushupWidget.monthGoal, 10) || 0);
+    const monthGoal = Math.max(0, Number.parseInt(widget.monthGoal, 10) || 0);
     const monthRemaining = Math.max(0, monthGoal - monthTotal);
     const monthProgress = monthGoal > 0 ? Math.min(100, Math.round((monthTotal / monthGoal) * 100)) : 0;
-    const yearGoal = Math.max(0, Number.parseInt(pushupWidget.yearGoal, 10) || 0);
+    const yearGoal = Math.max(0, Number.parseInt(widget.yearGoal, 10) || 0);
     const yearRemaining = Math.max(0, yearGoal - yearTotal);
     const yearProgress = yearGoal > 0 ? Math.min(100, Math.round((yearTotal / yearGoal) * 100)) : 0;
     const yearStartUtc = Date.UTC(currentYear, 0, 1);
@@ -386,10 +414,10 @@
     };
   }
 
-  function addPushupRep() {
+  function addMovementRep(widget, saveWidget) {
     const now = new Date();
-    const previousBestSet = getPushupStats(now).bestSet.count;
-    let set = getActivePushupSet(now);
+    const previousBestSet = getPushupStats(now, widget).bestSet.count;
+    let set = getActivePushupSet(now, widget);
 
     if (!set) {
       set = {
@@ -398,14 +426,14 @@
         updatedAt: now.toISOString(),
         count: 0
       };
-      pushupWidget.sets.push(set);
+      widget.sets.push(set);
     }
 
     set.count += 1;
     set.updatedAt = now.toISOString();
 
     if (set.count > previousBestSet) {
-      pushupWidget.lastRecord = {
+      widget.lastRecord = {
         type: 'set',
         setId: set.id,
         count: set.count,
@@ -413,28 +441,28 @@
       };
     }
 
-    savePushupWidget();
+    saveWidget();
   }
 
-  function subtractPushupRep() {
+  function subtractMovementRep(widget, saveWidget) {
     const now = new Date();
-    const set = getActivePushupSet(now);
+    const set = getActivePushupSet(now, widget);
     if (!set || set.count <= 0) return;
 
     set.count = Math.max(0, set.count - 1);
     set.updatedAt = now.toISOString();
 
     if (set.count === 0) {
-      pushupWidget.sets = pushupWidget.sets.filter(candidate => candidate.id !== set.id);
+      widget.sets = widget.sets.filter(candidate => candidate.id !== set.id);
     }
 
-    if (pushupWidget.lastRecord?.type === 'set' && pushupWidget.lastRecord?.setId === set.id) {
-      const bestOtherSetCount = pushupWidget.sets.reduce((best, candidate) => {
+    if (widget.lastRecord?.type === 'set' && widget.lastRecord?.setId === set.id) {
+      const bestOtherSetCount = widget.sets.reduce((best, candidate) => {
         if (candidate.id === set.id) return best;
         return Math.max(best, Number.parseInt(candidate.count, 10) || 0);
       }, 0);
 
-      pushupWidget.lastRecord = set.count > bestOtherSetCount
+      widget.lastRecord = set.count > bestOtherSetCount
         ? {
             type: 'set',
             setId: set.id,
@@ -444,7 +472,23 @@
         : null;
     }
 
-    savePushupWidget();
+    saveWidget();
+  }
+
+  function addPushupRep() {
+    addMovementRep(pushupWidget, savePushupWidget);
+  }
+
+  function subtractPushupRep() {
+    subtractMovementRep(pushupWidget, savePushupWidget);
+  }
+
+  function addAirSquatRep() {
+    addMovementRep(airSquatWidget, saveAirSquatWidget);
+  }
+
+  function subtractAirSquatRep() {
+    subtractMovementRep(airSquatWidget, saveAirSquatWidget);
   }
 
   // ---- Danish holidays (helligdage) ----
@@ -1293,15 +1337,32 @@
     </div>`;
   }
 
-  function renderPushupWidget() {
+  function shouldShowWidgetsPageOnlyWidgets() {
+    return layoutState.mode === 'tabs' && (
+      (!isNarrowLayoutViewport() && layoutState.activeTab === 'widgets') ||
+      (isNarrowLayoutViewport() && layoutState.mobileActiveView === 'widgets')
+    );
+  }
+
+  let widgetsPanelIncludesPageOnlyWidgets = null;
+
+  function renderMovementWidget(config) {
+    const {
+      widget,
+      className,
+      actionPrefix,
+      singularLabel,
+      pluralLabel,
+      controlsLabel
+    } = config;
     const now = new Date();
-    const stats = getPushupStats(now);
-    const activeSet = getActivePushupSet(now);
-    const lastRecordAt = pushupWidget.lastRecord?.at ? new Date(pushupWidget.lastRecord.at) : null;
+    const stats = getPushupStats(now, widget);
+    const activeSet = getActivePushupSet(now, widget);
+    const lastRecordAt = widget.lastRecord?.at ? new Date(widget.lastRecord.at) : null;
     const showSetRecord = !!(
       activeSet &&
-      pushupWidget.lastRecord?.type === 'set' &&
-      pushupWidget.lastRecord?.setId === activeSet.id &&
+      widget.lastRecord?.type === 'set' &&
+      widget.lastRecord?.setId === activeSet.id &&
       lastRecordAt &&
       !Number.isNaN(lastRecordAt.getTime()) &&
       now - lastRecordAt < PUSHUP_SET_WINDOW_MS
@@ -1311,24 +1372,24 @@
     const setExpiresAt = activeSet
       ? new Date(activeSet.updatedAt || activeSet.startedAt || 0).getTime() + PUSHUP_SET_WINDOW_MS
       : 0;
-    const statsOpen = !!pushupWidget.statsOpen;
+    const statsOpen = !!widget.statsOpen;
     const monthLabel = MONTHS[now.getMonth()];
     const yearLabel = String(now.getFullYear());
     const activeSetLabel = activeSet
-      ? `${formatNumber(activeSet.count)} push-up${activeSet.count === 1 ? '' : 's'}`
+      ? `${formatNumber(activeSet.count)} ${activeSet.count === 1 ? singularLabel : pluralLabel}`
       : '';
     const subtractDisabled = activeSet ? '' : ' disabled';
 
-    return `<div class="pushup-widget">
+    return `<div class="pushup-widget ${escapeHtml(className)}">
       <div class="pushup-main-row">
         <div class="pushup-count-block">
           <span>Today</span>
           <strong>${formatNumber(stats.todayTotal)}</strong>
           <small>I går: ${formatNumber(stats.yesterdayTotal)}</small>
         </div>
-        <div class="pushup-actions" aria-label="Push-up controls">
-          <button type="button" class="pushup-subtract-btn" data-action="pushup-minus" title="Remove push-up" aria-label="Remove push-up"${subtractDisabled}><span aria-hidden="true"></span></button>
-          <button type="button" class="pushup-add-btn" data-action="pushup-plus" title="Add push-up" aria-label="Add push-up">+</button>
+        <div class="pushup-actions" aria-label="${escapeHtml(controlsLabel)}">
+          <button type="button" class="pushup-subtract-btn" data-action="${escapeHtml(actionPrefix)}-minus" title="Remove ${escapeHtml(singularLabel)}" aria-label="Remove ${escapeHtml(singularLabel)}"${subtractDisabled}><span aria-hidden="true"></span></button>
+          <button type="button" class="pushup-add-btn" data-action="${escapeHtml(actionPrefix)}-plus" title="Add ${escapeHtml(singularLabel)}" aria-label="Add ${escapeHtml(singularLabel)}">+</button>
         </div>
       </div>
       ${activeSet ? `<div class="pushup-set-timer" data-expires-at="${setExpiresAt}">
@@ -1342,7 +1403,7 @@
       </div>` : ''}
       ${showSetRecord ? `<div class="pushup-record-banner">New max record: ${formatNumber(activeSet.count)} in a row</div>` : ''}
       <div class="pushup-stats-panel${statsOpen ? ' is-open' : ''}">
-        <button type="button" class="pushup-stats-toggle" data-action="pushup-toggle-stats" aria-expanded="${statsOpen}" aria-label="${statsOpen ? 'Skjul statistik' : 'Vis statistik'}">
+        <button type="button" class="pushup-stats-toggle" data-action="${escapeHtml(actionPrefix)}-toggle-stats" aria-expanded="${statsOpen}" aria-label="${statsOpen ? 'Skjul statistik' : 'Vis statistik'}">
           <span>Statistik</span>
           <strong aria-hidden="true">▾</strong>
         </button>
@@ -1362,8 +1423,33 @@
     </div>`;
   }
 
+  function renderPushupWidget() {
+    return renderMovementWidget({
+      widget: pushupWidget,
+      className: 'pushup-counter-widget',
+      actionPrefix: 'pushup',
+      singularLabel: 'push-up',
+      pluralLabel: 'push-ups',
+      controlsLabel: 'Push-up controls'
+    });
+  }
+
+  function renderAirSquatWidget() {
+    return renderMovementWidget({
+      widget: airSquatWidget,
+      className: 'air-squat-widget',
+      actionPrefix: 'air-squat',
+      singularLabel: 'air squat',
+      pluralLabel: 'air squats',
+      controlsLabel: 'Air squat controls'
+    });
+  }
+
   function renderWidgetsPanel() {
     const checked = pushupWidget.enabled ? 'checked' : '';
+    const airSquatChecked = airSquatWidget.enabled ? 'checked' : '';
+    const showPageOnlyWidgets = shouldShowWidgetsPageOnlyWidgets();
+    widgetsPanelIncludesPageOnlyWidgets = showPageOnlyWidgets;
     return `<section class="calendar-widgets-panel" aria-label="Widgets">
       <div class="calendar-widgets-header">
         <h2>Widgets</h2>
@@ -1376,7 +1462,22 @@
         </label>
         ${pushupWidget.enabled ? renderPushupWidget() : ''}
       </div>
+      ${showPageOnlyWidgets ? `<div class="calendar-widget-section">
+        <label class="calendar-widget-toggle">
+          <span>Air squats counter</span>
+          <input type="checkbox" class="air-squat-widget-toggle" ${airSquatChecked} aria-label="Toggle air squats counter">
+          <span class="calendar-widget-switch" aria-hidden="true"></span>
+        </label>
+        ${airSquatWidget.enabled ? renderAirSquatWidget() : ''}
+      </div>` : ''}
     </section>`;
+  }
+
+  function syncWidgetsPanelScope() {
+    if (!calendarTodoPanel) return;
+    const shouldIncludePageOnlyWidgets = shouldShowWidgetsPageOnlyWidgets();
+    if (widgetsPanelIncludesPageOnlyWidgets === shouldIncludePageOnlyWidgets) return;
+    renderWidgetsPanelInPlace();
   }
 
   function renderWidgetsPanelInPlace() {
@@ -1395,12 +1496,26 @@
       renderWidgetsPanelInPlace();
       return;
     }
-    const widget = calendarTodoPanel.querySelector('.pushup-widget');
+    const widget = calendarTodoPanel.querySelector('.pushup-counter-widget');
     if (!widget) {
       renderWidgetsPanelInPlace();
       return;
     }
     widget.outerHTML = renderPushupWidget();
+    schedulePushupCountdownTimer();
+  }
+
+  function renderAirSquatWidgetInPlace() {
+    if (!calendarTodoPanel || !airSquatWidget.enabled) {
+      renderWidgetsPanelInPlace();
+      return;
+    }
+    const widget = calendarTodoPanel.querySelector('.air-squat-widget');
+    if (!widget) {
+      renderWidgetsPanelInPlace();
+      return;
+    }
+    widget.outerHTML = renderAirSquatWidget();
     schedulePushupCountdownTimer();
   }
 
@@ -1415,20 +1530,26 @@
     stopPushupCountdownTimer();
     if (!calendarTodoPanel) return;
 
-    const timer = calendarTodoPanel.querySelector('.pushup-set-timer[data-expires-at]');
-    if (!timer) return;
-
-    const fillEl = timer.querySelector('.pushup-countdown-fill');
-    const expiresAt = Number.parseInt(timer.dataset.expiresAt, 10);
-    if (!Number.isFinite(expiresAt)) return;
+    const timers = Array.from(calendarTodoPanel.querySelectorAll('.pushup-set-timer[data-expires-at]'))
+      .map(timer => ({
+        timer,
+        fillEl: timer.querySelector('.pushup-countdown-fill'),
+        expiresAt: Number.parseInt(timer.dataset.expiresAt, 10)
+      }))
+      .filter(item => Number.isFinite(item.expiresAt));
+    if (!timers.length) return;
 
     const tick = () => {
-      const remainingMs = Math.max(0, expiresAt - Date.now());
-      const ratio = Math.max(0, Math.min(100, (remainingMs / PUSHUP_SET_WINDOW_MS) * 100));
+      let shouldRender = false;
+      timers.forEach(({ fillEl, expiresAt }) => {
+        const remainingMs = Math.max(0, expiresAt - Date.now());
+        const ratio = Math.max(0, Math.min(100, (remainingMs / PUSHUP_SET_WINDOW_MS) * 100));
 
-      if (fillEl) fillEl.style.width = `${ratio}%`;
+        if (fillEl) fillEl.style.width = `${ratio}%`;
+        if (remainingMs <= 0) shouldRender = true;
+      });
 
-      if (remainingMs <= 0) {
+      if (shouldRender) {
         stopPushupCountdownTimer();
         renderTodoPanel();
       }
@@ -1804,6 +1925,14 @@
         return;
       }
 
+      const airSquatStatsToggle = e.target.closest('[data-action="air-squat-toggle-stats"]');
+      if (airSquatStatsToggle) {
+        airSquatWidget.statsOpen = !airSquatWidget.statsOpen;
+        saveAirSquatWidget();
+        renderAirSquatWidgetInPlace();
+        return;
+      }
+
       const completedToggle = e.target.closest('[data-action="toggle-completed-todos"]');
       if (completedToggle) {
         todoPanelCompletedExpanded = !todoPanelCompletedExpanded;
@@ -1818,10 +1947,24 @@
         return;
       }
 
+      const airSquatAddBtn = e.target.closest('[data-action="air-squat-plus"]');
+      if (airSquatAddBtn) {
+        addAirSquatRep();
+        renderAirSquatWidgetInPlace();
+        return;
+      }
+
       const pushupSubtractBtn = e.target.closest('[data-action="pushup-minus"]');
       if (pushupSubtractBtn) {
         subtractPushupRep();
         renderPushupWidgetInPlace();
+        return;
+      }
+
+      const airSquatSubtractBtn = e.target.closest('[data-action="air-squat-minus"]');
+      if (airSquatSubtractBtn) {
+        subtractAirSquatRep();
+        renderAirSquatWidgetInPlace();
         return;
       }
 
@@ -1845,6 +1988,14 @@
       if (pushupToggle) {
         pushupWidget.enabled = pushupToggle.checked;
         savePushupWidget();
+        renderWidgetsPanelInPlace();
+        return;
+      }
+
+      const airSquatToggle = e.target.closest('.air-squat-widget-toggle');
+      if (airSquatToggle) {
+        airSquatWidget.enabled = airSquatToggle.checked;
+        saveAirSquatWidget();
         renderWidgetsPanelInPlace();
         return;
       }
@@ -3091,7 +3242,7 @@
 
   // ---- Settings helpers ----
   function getPlannerExportData() {
-    return JSON.stringify({ notes, recurring, standaloneTodos, pushupWidget, notebook, smartLinks }, null, 2);
+    return JSON.stringify({ notes, recurring, standaloneTodos, pushupWidget, airSquatWidget, notebook, smartLinks }, null, 2);
   }
 
   function applyImportedPlannerData(imported) {
@@ -3099,6 +3250,7 @@
     const importedRecurring = imported.recurring || [];
     const importedStandaloneTodos = Array.isArray(imported.standaloneTodos) ? imported.standaloneTodos : [];
     const importedPushupWidget = imported.pushupWidget ? normalizePushupWidget(imported.pushupWidget) : null;
+    const importedAirSquatWidget = imported.airSquatWidget ? normalizePushupWidget(imported.airSquatWidget) : null;
     const importedNotebook = imported.notebook || null;
     const importedSmartLinks = Array.isArray(imported.smartLinks) ? imported.smartLinks : null;
 
@@ -3143,6 +3295,27 @@
         }
       }
       savePushupWidget();
+    }
+
+    if (importedAirSquatWidget) {
+      const existingAirSquatSetIds = new Set(airSquatWidget.sets.map(set => set.id));
+      airSquatWidget.enabled = importedAirSquatWidget.enabled;
+      airSquatWidget.yearGoal = importedAirSquatWidget.yearGoal;
+      airSquatWidget.monthGoal = importedAirSquatWidget.monthGoal;
+      for (const set of importedAirSquatWidget.sets) {
+        if (!existingAirSquatSetIds.has(set.id)) {
+          airSquatWidget.sets.push(set);
+          existingAirSquatSetIds.add(set.id);
+        }
+      }
+      if (importedAirSquatWidget.lastRecord?.at) {
+        const importedRecordTime = new Date(importedAirSquatWidget.lastRecord.at).getTime();
+        const currentRecordTime = airSquatWidget.lastRecord?.at ? new Date(airSquatWidget.lastRecord.at).getTime() : 0;
+        if (!airSquatWidget.lastRecord || importedRecordTime > currentRecordTime) {
+          airSquatWidget.lastRecord = importedAirSquatWidget.lastRecord;
+        }
+      }
+      saveAirSquatWidget();
     }
 
     if (importedNotebook?.pages) {
@@ -4371,6 +4544,8 @@
     document.getElementById('morningBriefingTime').value = s.morningTime || '06:30';
     document.getElementById('pushupMonthGoalInput').value = String(pushupWidget.monthGoal ?? DEFAULT_PUSHUP_MONTH_GOAL);
     document.getElementById('pushupYearGoalInput').value = String(pushupWidget.yearGoal ?? DEFAULT_PUSHUP_YEAR_GOAL);
+    document.getElementById('airSquatMonthGoalInput').value = String(airSquatWidget.monthGoal ?? DEFAULT_AIR_SQUAT_MONTH_GOAL);
+    document.getElementById('airSquatYearGoalInput').value = String(airSquatWidget.yearGoal ?? DEFAULT_AIR_SQUAT_YEAR_GOAL);
     refreshSettingsExport();
     renderSettingsSmartLinksUI();
     setSettingsStatus('settingsExportStatus', '');
@@ -4510,6 +4685,9 @@
     pushupWidget.monthGoal = Math.max(0, parseInt(document.getElementById('pushupMonthGoalInput').value, 10) || 0);
     pushupWidget.yearGoal = Math.max(0, parseInt(document.getElementById('pushupYearGoalInput').value, 10) || 0);
     savePushupWidget();
+    airSquatWidget.monthGoal = Math.max(0, parseInt(document.getElementById('airSquatMonthGoalInput').value, 10) || 0);
+    airSquatWidget.yearGoal = Math.max(0, parseInt(document.getElementById('airSquatYearGoalInput').value, 10) || 0);
+    saveAirSquatWidget();
     smartLinks = collectSmartLinksFromSettingsUI();
     saveSmartLinks();
     renderTodoPanel();
@@ -4654,6 +4832,14 @@
       localStorage.setItem(PUSHUP_WIDGET_KEY, JSON.stringify(pushupWidget));
       return true;
     }
+    if (key === 'airSquatWidget') {
+      const shouldProtectLocalAirSquat = airSquatLocalWriteAt && Date.now() - airSquatLocalWriteAt < 10000;
+      airSquatWidget = shouldProtectLocalAirSquat
+        ? mergePushupWidgetData(airSquatWidget, remote)
+        : normalizePushupWidget(remote);
+      localStorage.setItem(AIR_SQUAT_WIDGET_KEY, JSON.stringify(airSquatWidget));
+      return true;
+    }
     if (key === 'notebook') {
       notebook = remote;
       if (!notebook.activePageId && notebook.pages?.length) {
@@ -4694,7 +4880,7 @@
 
   async function hydratePlannerDataFromServer() {
     if (typeof SupabaseSync.fetchKey !== 'function') return;
-    const keys = ['notes', 'recurring', 'standaloneTodos', 'pushupWidget', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
+    const keys = ['notes', 'recurring', 'standaloneTodos', 'pushupWidget', 'airSquatWidget', 'notebook', 'smartLinks', 'notifSettings', 'morningBriefSent'];
     for (const key of keys) {
       try {
         const row = await SupabaseSync.fetchKey(key);
@@ -4763,6 +4949,11 @@
       if (!isUserEditing()) renderWidgetsPanelInPlace();
     }));
 
+    syncListeners.push(SupabaseSync.listen('airSquatWidget', (remote, meta) => {
+      if (!applyRemotePayload('airSquatWidget', remote, meta)) return;
+      if (!isUserEditing()) renderWidgetsPanelInPlace();
+    }));
+
     syncListeners.push(SupabaseSync.listen('notebook', (remote, meta) => {
       if (!applyRemotePayload('notebook', remote, meta)) return;
       if (!isUserEditing()) renderNotebook();
@@ -4811,6 +5002,7 @@
         recurring,
         standaloneTodos,
         pushupWidget,
+        airSquatWidget,
         notebook,
         smartLinks,
         notifSettings: loadNotifSettings()
@@ -4885,6 +5077,7 @@
 
     updateMobileViewClass(mobileActiveView);
     document.body.classList.toggle('layout-view-widgets', layoutState.mode === 'tabs' && !isMobile && activeTab === 'widgets');
+    syncWidgetsPanelScope();
 
     if (mobileBottomNav) {
       mobileBottomNav.querySelectorAll('[data-mobile-view]').forEach(btn => {
