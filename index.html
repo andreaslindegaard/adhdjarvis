@@ -208,6 +208,30 @@
       display: none;
     }
 
+    body.layout-tabs.layout-view-widgets .calendar-tab-layout {
+      display: block;
+      max-width: 760px;
+    }
+
+    body.layout-tabs.layout-view-widgets .calendar-document,
+    body.layout-tabs.layout-view-widgets .calendar-todo-card {
+      display: none !important;
+    }
+
+    body.layout-tabs.layout-view-widgets .calendar-todo-panel {
+      display: flex;
+      position: static !important;
+      max-height: none !important;
+      overflow: visible;
+      margin: 28px auto 0;
+      width: 100%;
+      padding: 0;
+    }
+
+    body.layout-tabs.layout-view-widgets .calendar-widgets-panel {
+      width: 100%;
+    }
+
     .calendar-todo-card,
     .calendar-widgets-panel {
       display: flex;
@@ -3975,6 +3999,7 @@
 
   <div class="view-tabs" id="viewTabs">
     <button class="view-tab" data-view="calendar">Calendar</button>
+    <button class="view-tab" data-view="widgets">Widgets</button>
     <button class="view-tab" data-view="notebook">Notebook</button>
   </div>
 

@@ -4847,7 +4847,14 @@
   // ---- Layout mode (split / tabs) ----
   const SPLIT_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="5.5" rx="1"/><rect x="1.5" y="9" width="13" height="5.5" rx="1"/></svg>';
   const TABS_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="5" width="13" height="9.5" rx="1"/><rect x="1.5" y="1.5" width="5" height="4.5" rx="1" fill="currentColor" stroke="none"/><rect x="8.5" y="1.5" width="5" height="4.5" rx="1"/></svg>';
+  const DESKTOP_VIEWS = ['calendar', 'widgets', 'notebook'];
   const MOBILE_VIEWS = ['calendar', 'todo', 'widgets', 'notebook'];
+
+  function getActiveTab() {
+    return DESKTOP_VIEWS.includes(layoutState.activeTab)
+      ? layoutState.activeTab
+      : 'calendar';
+  }
 
   function getMobileActiveView() {
     return MOBILE_VIEWS.includes(layoutState.mobileActiveView)
@@ -4873,9 +4880,11 @@
     const toggleBtn = document.getElementById('viewToggleBtn');
     const mobileBottomNav = document.getElementById('mobileBottomNav');
     const isMobile = isNarrowLayoutViewport();
+    const activeTab = getActiveTab();
     const mobileActiveView = getMobileActiveView();
 
     updateMobileViewClass(mobileActiveView);
+    document.body.classList.toggle('layout-view-widgets', layoutState.mode === 'tabs' && !isMobile && activeTab === 'widgets');
 
     if (mobileBottomNav) {
       mobileBottomNav.querySelectorAll('[data-mobile-view]').forEach(btn => {
@@ -4891,7 +4900,7 @@
       viewTabs.classList.add('visible');
 
       viewTabs.querySelectorAll('.view-tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.view === layoutState.activeTab);
+        t.classList.toggle('active', t.dataset.view === activeTab);
       });
 
       if (isMobile) {
@@ -4901,7 +4910,7 @@
         plannerRoot.classList.toggle('hidden', mobileActiveView !== 'calendar');
         notebookContent.classList.remove('notebook-collapsed');
         if (showNotebook) renderNotebook();
-      } else if (layoutState.activeTab === 'notebook') {
+      } else if (activeTab === 'notebook') {
         nbSection.classList.remove('hidden');
         calendarView.classList.add('hidden');
         plannerRoot.classList.add('hidden');
@@ -4909,7 +4918,7 @@
       } else {
         nbSection.classList.add('hidden');
         calendarView.classList.remove('hidden');
-        plannerRoot.classList.remove('hidden');
+        plannerRoot.classList.toggle('hidden', activeTab === 'widgets');
       }
 
       toggleBtn.innerHTML = SPLIT_ICON;
@@ -4939,9 +4948,11 @@
 
   let savedCalendarScrollY = null;
   let savedNotebookScrollY = null;
+  let savedWidgetsScrollY = null;
 
   const CAL_SCROLL_SS_KEY = 'adhd-planner-cal-scroll-y';
   const NB_SCROLL_SS_KEY = 'adhd-planner-nb-scroll-y';
+  const WIDGETS_SCROLL_SS_KEY = 'adhd-planner-widgets-scroll-y';
 
   function clampWindowScrollY(y) {
     const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -4952,16 +4963,20 @@
     const tab = e.target.closest('.view-tab');
     if (!tab) return;
     const targetView = tab.dataset.view;
-    if (targetView === layoutState.activeTab) return;
+    const currentView = getActiveTab();
+    if (!DESKTOP_VIEWS.includes(targetView) || targetView === currentView) return;
 
     disableBootScroll();
 
-    if (layoutState.activeTab === 'calendar') {
+    if (currentView === 'calendar') {
       savedCalendarScrollY = window.scrollY;
       try { sessionStorage.setItem(CAL_SCROLL_SS_KEY, String(savedCalendarScrollY)); } catch (_) {}
-    } else if (layoutState.activeTab === 'notebook') {
+    } else if (currentView === 'notebook') {
       savedNotebookScrollY = window.scrollY;
       try { sessionStorage.setItem(NB_SCROLL_SS_KEY, String(savedNotebookScrollY)); } catch (_) {}
+    } else if (currentView === 'widgets') {
+      savedWidgetsScrollY = window.scrollY;
+      try { sessionStorage.setItem(WIDGETS_SCROLL_SS_KEY, String(savedWidgetsScrollY)); } catch (_) {}
     }
 
     layoutState.activeTab = targetView;
@@ -5000,6 +5015,19 @@
           });
         });
       }
+    } else if (targetView === 'widgets') {
+      let y = savedWidgetsScrollY;
+      if (y == null) {
+        try {
+          const parsed = parseFloat(sessionStorage.getItem(WIDGETS_SCROLL_SS_KEY));
+          if (!isNaN(parsed)) y = parsed;
+        } catch (_) {}
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, y != null && !isNaN(y) ? clampWindowScrollY(y) : 0);
+        });
+      });
     }
   });
 
@@ -5024,7 +5052,7 @@
 
     layoutState.mode = 'tabs';
     layoutState.mobileActiveView = targetView;
-    layoutState.activeTab = targetView === 'notebook' ? 'notebook' : 'calendar';
+    layoutState.activeTab = (targetView === 'notebook' || targetView === 'widgets') ? targetView : 'calendar';
     saveLayout();
     applyLayout();
 
